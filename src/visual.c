@@ -7,7 +7,7 @@
 #define FPS 60
 #define WIDTH 2750
 #define HEIGHT 1450
-#define RECORDING 1 // 1 to record video, 0 to not record
+#define RECORDING 0 // 1 to record video, 0 to not record
 #define BG BLACK
 #define DRAWCOLOR WHITE
 #define RATIODEFAULT 5         // ratio entre la hauteur du rectangle et la hauteur du texte
@@ -778,10 +778,12 @@ int bm_visual_main(void)
             DrawTexturePro(screen.texture, (Rectangle){ 0, 0, (float)screen.texture.width, -(float)screen.texture.height }, (Rectangle){ 0, 0, (float)screen.texture.width, (float)screen.texture.height}, (Vector2){ 0, 0 }, 0.0f, WHITE);
         EndDrawing();
         //----------------------------------------------------------------------------------
+        Image image = LoadImageFromTexture(screen.texture);
+        UnloadImage(image);
         if (RECORDING) {
-            Image image = LoadImageFromTexture(screen.texture);
+            
             ffmpeg_send_frame_flipped(ffmpeg, image.data, GetScreenWidth(), GetScreenHeight());
-            UnloadImage(image);
+            
         }
         countFrame++;
     }

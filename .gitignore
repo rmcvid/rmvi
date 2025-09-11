@@ -1,5 +1,6 @@
 # Ignorer dossiers externes
-extern/
+.cache/
+extern/raylib/
 build/
 .vscode/
 __pycache__/

@@ -1,0 +1,5 @@
+# Ignorer dossiers externes
+extern/
+build/
+.vscode/
+__pycache__/

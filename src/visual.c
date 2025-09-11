@@ -673,7 +673,7 @@ float sampleCosTheta(float a, float beta_e) {
 
 int bm_visual_main(void)
 {   
-    rmviGetCustomFont("C:\\Users\\ryanm\\Documents\\Rmvi\\animation\\extern\\police\\latinmodern-math-1959\\otf\\latinmodern-math.otf", 80);
+    rmviGetCustomFont(FONT_PATH, 80);
     void *ffmpeg = NULL; 
     if (RECORDING) {
         ffmpeg = ffmpeg_start_rendering(GetScreenWidth(), GetScreenHeight(), FPS);

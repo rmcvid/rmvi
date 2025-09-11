@@ -58,3 +58,5 @@ target_compile_definitions(animation PRIVATE
 link_directories("${CMAKE_CURRENT_SOURCE_DIR}/extern")
 # e.g. target_link_libraries(client PRIVATE foo)
 # ————————————————————————————————————————————————————————————————
+
+add_compile_definitions(FONT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/extern/police/latinmodern-math-1959/otf/latinmodern-math.otf")

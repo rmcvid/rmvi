@@ -387,6 +387,7 @@ void rmviWriteLatex(const char *latex, Vector2 *position, float sizeText, float 
     // You might want x,y to be top-left or center — adapt before calling.
     for (int i = 0; latex[i] != '\0'; ) {
         // handle /commands like /nu or /exp{...}
+        //switch case
         if (latex[i] == '/' && latex[i+1] != '\0') {
             if (strncmp(&latex[i+1], "nu", 2) == 0) {
                 DrawTextEx(font, "ν", *position, sizeText, spacing, color);

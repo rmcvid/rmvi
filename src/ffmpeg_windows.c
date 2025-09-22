@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <string.h>
 
 typedef struct {
     HANDLE hProcess;
@@ -34,6 +35,20 @@ static LPSTR GetLastErrorAsString(void)
     return messageBuffer;
 }
 
+
+// NEW: robust write helper (handles short writes on pipes)
+static BOOL WriteAll(HANDLE h, const void* buf, DWORD bytesTotal) {
+    const uint8_t* p = (const uint8_t*)buf;
+    while (bytesTotal > 0) {
+        DWORD wrote = 0;
+        if (!WriteFile(h, p, bytesTotal, &wrote, NULL)) return FALSE;
+        if (wrote == 0) return FALSE; // pipe closed
+        p += wrote;
+        bytesTotal -= wrote;
+    }
+    return TRUE;
+}
+
 FFMPEG *ffmpeg_start_rendering(size_t width, size_t height, size_t fps)
 {
     printf("Starting ffmpeg rendering with width: %zu, height: %zu, fps: %zu\n", width, height, fps);
@@ -44,7 +59,9 @@ FFMPEG *ffmpeg_start_rendering(size_t width, size_t height, size_t fps)
     saAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
     saAttr.bInheritHandle = TRUE;
 
-    if (!CreatePipe(&pipe_read, &pipe_write, &saAttr, 0)) {
+    // Larger pipe buffer to reduce stalls.
+    DWORD pipeSize = 4 * 1024 * 1024; // 4 MB
+    if (!CreatePipe(&pipe_read, &pipe_write, &saAttr, pipeSize)) {
         fprintf(stderr, "ERROR: Could not create pipe: %s\n", GetLastErrorAsString());
         return NULL;
     }
@@ -54,38 +71,30 @@ FFMPEG *ffmpeg_start_rendering(size_t width, size_t height, size_t fps)
         return NULL;
     }
 
-    // https://docs.microsoft.com/en-us/windows/win32/procthread/creating-a-child-process-with-redirected-input-and-output
-
     STARTUPINFO siStartInfo;
     ZeroMemory(&siStartInfo, sizeof(siStartInfo));
     siStartInfo.cb = sizeof(STARTUPINFO);
-    // NOTE: theoretically setting NULL to std handles should not be a problem
-    // https://docs.microsoft.com/en-us/windows/console/getstdhandle?redirectedfrom=MSDN#attachdetach-behavior
     siStartInfo.hStdError = GetStdHandle(STD_ERROR_HANDLE);
-    // TODO(#32): check for errors in GetStdHandle
     siStartInfo.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
-    siStartInfo.hStdInput = pipe_read;
-    siStartInfo.dwFlags |= STARTF_USESTDHANDLES;
+    siStartInfo.hStdInput  = pipe_read;
+    siStartInfo.dwFlags   |= STARTF_USESTDHANDLES;
 
     PROCESS_INFORMATION piProcInfo;
     ZeroMemory(&piProcInfo, sizeof(PROCESS_INFORMATION));
 
-    char cmd_buffer[1024*2];
-    snprintf(cmd_buffer, sizeof(cmd_buffer), "ffmpeg.exe -loglevel verbose -y -f rawvideo -pix_fmt rgba -s %dx%d -r %d -i - -c:v libx264 -vb 2500k -c:a aac -ab 200k -pix_fmt yuv420p output.mp4", (int)width, (int)height, (int)fps);
+    char cmd_buffer[2048];
+    // NOTE: -vf vflip flips the frame; we now always write in top->bottom order.
+    // If your data is BGRA, change rgba->bgra here and in ffmpeg_send_frame().
+     snprintf(cmd_buffer, sizeof(cmd_buffer),
+        "ffmpeg.exe -loglevel verbose -y "
+        "-f rawvideo -pix_fmt rgba -s %dx%d -r %d -i - "
+        "-vf vflip "
+        "-c:v hevc_qsv -preset veryfast -global_quality 28 "
+        "-pix_fmt yuv420p output.mp4",
+        (int)width, (int)height, (int)fps);
 
-    BOOL bSuccess =
-        CreateProcess(
-            NULL,
-            cmd_buffer,
-            NULL,
-            NULL,
-            TRUE,
-            0,
-            NULL,
-            NULL,
-            &siStartInfo,
-            &piProcInfo
-        );
+    BOOL bSuccess = CreateProcess(
+        NULL, cmd_buffer, NULL, NULL, TRUE, 0, NULL, NULL, &siStartInfo, &piProcInfo);
 
     if (!bSuccess) {
         fprintf(stderr, "ERROR: Could not create child process: %s\n", GetLastErrorAsString());
@@ -95,40 +104,34 @@ FFMPEG *ffmpeg_start_rendering(size_t width, size_t height, size_t fps)
     CloseHandle(pipe_read);
     CloseHandle(piProcInfo.hThread);
 
-    // TODO: use Windows specific allocation stuff?
-    FFMPEG *ffmpeg = malloc(sizeof(FFMPEG));
+    FFMPEG* ffmpeg = (FFMPEG*)malloc(sizeof(FFMPEG));
     assert(ffmpeg != NULL && "Buy MORE RAM lol!!");
-    ffmpeg->hProcess = piProcInfo.hProcess;
-    // ffmpeg->hPipeRead = pipe_read;
+    ffmpeg->hProcess   = piProcInfo.hProcess;
     ffmpeg->hPipeWrite = pipe_write;
     return ffmpeg;
 }
 
 void ffmpeg_send_frame(FFMPEG *ffmpeg, void *data, size_t width, size_t height)
 {
-    WriteFile(ffmpeg->hPipeWrite, data, (DWORD)(sizeof(uint32_t)*width*height), NULL, NULL);
+    const DWORD bytes = (DWORD)(sizeof(uint32_t) * width * height); // RGBA32
+    if (!WriteAll(ffmpeg->hPipeWrite, data, bytes)) {
+        fprintf(stderr, "ERROR: WriteAll failed: %s\n", GetLastErrorAsString());
+    }
 }
 
+// Kept for API compatibility: now just forwards to the single-write path.
+// (ffmpeg handles the vertical flip.)
 void ffmpeg_send_frame_flipped(FFMPEG *ffmpeg, void *data, size_t width, size_t height)
 {
-    for (size_t y = height; y > 0; --y) {
-        WriteFile(ffmpeg->hPipeWrite, (uint32_t*)data + (y - 1)*width, (DWORD)(sizeof(uint32_t)*width), NULL, NULL);
-    }
+    ffmpeg_send_frame(ffmpeg, data, width, height);
 }
 
 void ffmpeg_end_rendering(FFMPEG *ffmpeg)
 {
     FlushFileBuffers(ffmpeg->hPipeWrite);
-    // FlushFileBuffers(ffmpeg->hPipeRead);
-
     CloseHandle(ffmpeg->hPipeWrite);
-    // CloseHandle(ffmpeg->hPipeRead);
 
-    DWORD result = WaitForSingleObject(
-                       ffmpeg->hProcess,     // HANDLE hHandle,
-                       INFINITE // DWORD  dwMilliseconds
-                   );
-
+    DWORD result = WaitForSingleObject(ffmpeg->hProcess, INFINITE);
     if (result == WAIT_FAILED) {
         fprintf(stderr, "ERROR: could not wait on child process: %s\n", GetLastErrorAsString());
         return;

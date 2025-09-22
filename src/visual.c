@@ -4,9 +4,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #define MAX_FRAMES 300
-#define FPS 60
-#define WIDTH 2750
-#define HEIGHT 1450
+#define FPS 50
+#define WIDTH 1920 //
+#define HEIGHT 1080 // 1.5
 #define RECORDING 0 // 1 to record video, 0 to not record
 #define BG BLACK
 #define DRAWCOLOR WHITE
@@ -763,7 +763,7 @@ int bm_visual_main(void)
                     atom = rmviGetAtom(&h_3_frame, "H_3", 12.32f, &he_3);
                     atom_defined = true;
                 }
-                if(rmviDesintegration(&atom, 1.00f/60.0f)) {
+                if(rmviDesintegration(&atom, 1.00f/FPS)) {
                     rmviUpdateAtom(&atom);
                 }
                 rmviDrawAtom(atom);
@@ -778,12 +778,11 @@ int bm_visual_main(void)
             DrawTexturePro(screen.texture, (Rectangle){ 0, 0, (float)screen.texture.width, -(float)screen.texture.height }, (Rectangle){ 0, 0, (float)screen.texture.width, (float)screen.texture.height}, (Vector2){ 0, 0 }, 0.0f, WHITE);
         EndDrawing();
         //----------------------------------------------------------------------------------
-        Image image = LoadImageFromTexture(screen.texture);
-        UnloadImage(image);
+        
         if (RECORDING) {
-            
+            Image image = LoadImageFromTexture(screen.texture);
             ffmpeg_send_frame_flipped(ffmpeg, image.data, GetScreenWidth(), GetScreenHeight());
-            
+            UnloadImage(image);
         }
         countFrame++;
     }

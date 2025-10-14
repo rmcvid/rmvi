@@ -5,6 +5,7 @@
 #include "raymath.h"
 #include "rlgl.h"
 #include "text2Latex.h"
+#include "fft_wrapper.h"
 
 typedef struct {
     Rectangle outerRect;
@@ -41,15 +42,46 @@ typedef struct rmviAtom {
     float lambda;
     struct rmviAtom *daughter; // isotope fils (NULL si stable)
     bool alive;
+    Vector2 center;
+    Vector2 speed;
 } rmviAtom;
+
+typedef struct rmviParticle {
+    rmviFrame *frame;
+    Vector2 center;
+    Vector2 speed;
+    float size;
+    float lifespan;
+} rmviParticle;
+
+typedef struct rmviDynamic2D{
+    Vector2 position;
+    double mass;
+    Vector2 velocity;
+    Vector2 force;
+} rmviDynamic2D;
+
+typedef struct rmviVisual{
+    Texture2D texture;
+    float width;
+    float height;
+} rmviVisual;
+
+typedef struct rmviPlanet{
+    rmviDynamic2D features ;
+    rmviVisual visual;
+} rmviPlanet;
+
+typedef struct rmviDash{
+    Vector2 position;
+    Vector2 velocity;
+} rmviDash;
+
 
 typedef float (*MathFunction)(float);
 
 
 void rmviDrawTextMid(const char *text, Rectangle rec, Color color, float ratio, Font font);
-int bm_visual_initialisation(void);
-int bm_visual_uninitialisation(void);
-int bm_visual_main(void);
 
 // ----------------------------- RECTANGLES -----------------------------
 Rectangle rmviGetRectangleCenteredRatio(float x, float y, float ratio_x, float ratio_y);
@@ -66,12 +98,17 @@ void rmviMyDrawText(const char *text, Vector2 position, float size, Color color)
 rmviFrame rmviGetFrame(float posX, float posY, float width, float height, float lineThick, Color innerColor, Color outerColor, const char *text, Font font, float roundness);
 rmviFrame rmviGetFrameBG(float posX, float posY, float width, float height, float lineThick, const char *text, Font font);
 rmviFrame rmviGetFrameBGCentered(float posX, float posY, float ratio_x, float ratio_y, float lineThick, const char *text, Font font);
+rmviFrame rmviGetFrameBGCentered(float posX, float posY, float ratio_x, float ratio_y, float lineThick, const char *text, Font font);
+rmviFrame rmviGetRoundFrameBGCentered(float posX, float posY, float ratio, float lineThick, const char *text, Font font);
 void rmviDrawFrame(rmviFrame frame, float ratio);
 void rmviDrawFramePro(rmviFrame frame, float ratio, float rotation, Vector2 origin, Vector2 translationVector);
-rmviFrame rmviGetFrameBGCentered(float posX, float posY, float ratio_x, float ratio_y, float lineThick, const char *text, Font font);
 void rmviUpdateFrame(rmviFrame *frame, float posX, float posY, float width, float height, float lineThick, Color innerColor, Color outerColor, const char *text, Font font);
 void rmviZoomFrame(rmviFrame *frame, float rate);
 void rmviRewriteFrame(rmviFrame *frame, const char *text); 
+
+// ----------------------------- Tree -----------------------------
+rmviTree *rmviCreateTree(void);
+int getDepth(rmviTree *tree, int index);
 
 // ----------------------------- CARTHESIAN AND ARROWS -----------------------------
 void rmviDrawArrow2(Vector2 start, Vector2 end, float arrowSize, float ratio, Color color);
@@ -87,11 +124,28 @@ void rmviPositioningTree(rmviTree *tree,float spaceTreeRatioX, float spaceTreeRa
 
 
 float rmviRand();
+Vector2 rmviRandomSpeed(Vector4 *count);
+bool rmviVector2IsZero(Vector2 vec);
 // ----------------------------- ATOMS AND TREE -----------------------------
 rmviAtom rmviGetAtom(rmviFrame *frame, const char *nature, float lifespan, rmviAtom *daughter);
 void rmviDrawTree(rmviTree *tree, int arrows);
 void rmviDrawTreeSquareWrite(rmviTree *tree, float leftRatio, const char **listText, Color color, float ratioWriteArrow, float size);
+void rmviAtomDecay(rmviAtom *atom);
+bool rmviDesintegration(rmviAtom *atom, float deltaTime);
+void rmviAtomUpdate(rmviAtom *atom);
+rmviAtom rmviGetAtomSpeed(rmviFrame *frame, const char *nature, float lifespan, rmviAtom *daughter, Vector2 speed);
+rmviFrame rmviGetElectron(float posX, float posY);
 
+// ----------------------------- Color -----------------------------
+Color GetAverageColor(Texture2D texture);
+
+// ----------------------------- DYNAMICS 2D AND PLANETS -----------------------------
+rmviPlanet rmviGetPlanet(Vector2 position, float mass, Vector2 velocity, Vector2 force, Texture2D texture, float height);
+void rmviGravityRepulsion(rmviDynamic2D **features, int n);
+
+
+// ----------------------------- Fourrier -----------------------------
+void rmviDrawFourier(FourierCoeff *coeffs, int n, Vector2 origin, float scale, Color color, float time, Vector2 *figure);  // dessine les cercles et le tracé
 
 // fait tourner un rectangle autour de son centre
 #endif // VISUAL_H

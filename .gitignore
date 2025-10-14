@@ -4,3 +4,7 @@ extern/raylib/
 build/
 .vscode/
 __pycache__/.cache/
+video/fourier/output/
+video/markov/output/
+output.mp4
+output.wav

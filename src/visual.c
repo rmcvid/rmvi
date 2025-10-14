@@ -1,52 +1,21 @@
 #include "visual.h"
 #include "ffmpeg.h"
 #include "text2Latex.h"
+#include "fft_wrapper.h"
 #include <stdio.h>
 #include <stdlib.h>
-#define MAX_FRAMES 300
-#define FPS 50
-#define WIDTH 1920 //
-#define HEIGHT 1080 // 1.5
-#define RECORDING 0 // 1 to record video, 0 to not record
-#define BG BLACK
+//#include <fftw3.h>
 #define DRAWCOLOR WHITE
-#define RATIODEFAULT 5         // ratio entre la hauteur du rectangle et la hauteur du texte
+#define BG BLACK
+#define RATIODEFAULT 4.5      // ratio entre la hauteur du rectangle et la hauteur du texte
 #define RATIO_SPACE 15
 #define NBPOINTS 1000
 #define SPEED 10
-#define SIZEXPLOT 500
-#define RATIOYPLOT 1.4
-#define UNITRATIO 2
 #define PRECISIONS 35 // Give more precision to the plot
-#define SAFE_RATIO(num, den) ((den) != 0 ? (float)(num) / (float)(den) : 0.0f) // affiche 0 quand diviser par zero
-#define SPACETREERATIOX 3.0f // Espace entre les noeuds sur l'axe X
-#define SPACETREERATIOY 1.5f // Espace entre les noeuds sur l'axe Y
 #define SIZETEXT 50.0f      // taille du text standar
 #define ARROWSIZE 20.0f     // gives the size arrow divided by ratio i think
 #define SPLIT_LEFT_ARROWS 0.2f // gives the left split for arrowsRect
 #define RATIOWRITEARROWS 0.5f
-
-#define TEST_DOUBLE_BEGIN " Essaye initiale /begin(itemize) /item Premier /item deuxieme /begin(itemize) /item troisieme /end(itemize)/end(itemize)"
-
-// --------------------------------- SCREEN INITIALIZATION ---------------------------------
-int bm_visual_initialisation(void) {
-    // Initialize raylib
-    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
-    int screenWidth = WIDTH;
-    int screenHeight = HEIGHT;
-
-    InitWindow(screenWidth, screenHeight, "test example");
-    SetTargetFPS(FPS); 
-
-    return 0;  // Success
-
-}
-int bm_visual_uninitialisation(void) {
-    // De-Initialization
-    CloseWindow();  // Close window and OpenGL context
-    return 0;  // Success
-}
-
 //---------------------------------- RECTANGLE AND FRAMES ---------------------------------
 void rmviMyDrawText(const char *text, Vector2 position, float size, Color color) {
     if (text == NULL || strlen(text) == 0) return;
@@ -103,7 +72,7 @@ rmviFrame rmviGetRoundFrame(float posX, float posY, float radius, float lineThic
     return frame;
 }
 
-rmviFrame rmviGetRoundFrameBGCentered(float posX, float posY, float ratio, float lineThick, const char *text, Font font) {
+rmviFrame rmviGetRoundFrameBGCentered(float posX, float posY, float ratio, float lineThick, const char *text, Font font){
     float radius = (float)GetScreenWidth() / ratio;
     Rectangle rec = {
         posX - radius,
@@ -576,6 +545,8 @@ void rmviDrawTree(rmviTree *tree, int arrows) {
         else if( arrows == 2) rmviDrawTreeSquareWrite(tree, SPLIT_LEFT_ARROWS, NULL, DRAWCOLOR, RATIOWRITEARROWS, SIZETEXT);
     }
 }
+// Dessine l'arbre avec des flèches en angle droit et du texte sur les flèches
+// leftRatio : proportion de la flèche avant le virage
 void rmviDrawTreeSquareWrite(rmviTree *tree, float leftRatio, const char **listText, Color color, float ratioWriteArrow, float size) {
     if (tree == NULL) return;
     int count = 0;
@@ -609,6 +580,14 @@ rmviAtom rmviGetAtom(rmviFrame *frame, const char *nature, float lifespan, rmviA
     atom.lambda = logf(2.0f) / lifespan;  
     atom.daughter = daughter;
     atom.alive = true;
+    frame ? (atom.center = (Vector2){ frame->outerRect.x + frame->outerRect.width / 2.0f, frame->outerRect.y + frame->outerRect.height / 2.0f }) : (atom.center = (Vector2){0.0f, 0.0f});
+    atom.speed = (Vector2){0.0f, 0.0f};
+    return atom;
+}
+// get an atom with a speed
+rmviAtom rmviGetAtomSpeed(rmviFrame *frame, const char *nature, float lifespan, rmviAtom *daughter, Vector2 speed){
+    rmviAtom atom = rmviGetAtom(frame, nature, lifespan, daughter);
+    atom.speed = speed;
     return atom;
 }
 // regarde si il y'a eu une désintégration
@@ -620,7 +599,7 @@ bool rmviDesintegration(rmviAtom *atom, float deltaTime) {
     return r < p;
 }
 // met à jour l'atome si jamais il y'a eu une desintégration
-void rmviUpdateAtom(rmviAtom *atom){
+void rmviAtomDecay(rmviAtom *atom){
     // en fonction de la desintégration doit crée les particules qui dégagent
     atom->nature = atom->daughter->nature;
     atom->lifespan = atom->daughter->lifespan;
@@ -628,6 +607,15 @@ void rmviUpdateAtom(rmviAtom *atom){
     atom->daughter = atom->daughter->daughter;
     rmviRewriteFrame(atom->frame, atom->nature);
 }
+bool rmviVector2IsZero(Vector2 vec) {
+    return (vec.x == 0.0f && vec.y == 0.0f);
+}
+void rmviAtomUpdate(rmviAtom *atom){
+    if(!rmviVector2IsZero(atom->speed)){
+        rmviUpdateFrame(atom->frame, atom->frame->outerRect.x + atom->speed.x , atom->frame->outerRect.y + atom->speed.y, atom->frame->outerRect.width, atom->frame->outerRect.height, atom->frame->lineThick, atom->frame->innerColor, atom->frame->outerColor, atom->frame->text, atom->frame->font);
+    }
+}
+
 rmviFrame rmviGetElectron(float posX, float posY){
     rmviFrame electron = rmviGetRoundFrameBGCentered(posX, posY, 40, 5, "e-", mathFont);
     return electron;
@@ -668,126 +656,56 @@ float sampleCosTheta(float a, float beta_e) {
         }
     }
 }
-// a tritium = -0.10f; beta_e = 0.9f;
 
+rmviPlanet rmviGetPlanet(Vector2 position, float mass, Vector2 velocity, Vector2 force, Texture2D texture, float height){
+    rmviPlanet planet = { .features = { position, mass, velocity, force }, .visual = { texture, height, height } };
+    return planet;
+}
 
-int bm_visual_main(void)
-{   
-    rmviGetCustomFont(FONT_PATH, 80);
-    void *ffmpeg = NULL; 
-    if (RECORDING) {
-        ffmpeg = ffmpeg_start_rendering(GetScreenWidth(), GetScreenHeight(), FPS);
-    }
-    int countFrame = 0;
-    int frameInit = -1;
-    Vector2 origin = {0.0f, 0.0f};
-    Vector2 center = { (float)GetScreenWidth()/2.0f, (float)GetScreenHeight()/2.0f };
-    Vector2 speed = {0, 0};
-    //--------------------------------------------------------------------------------------
-    RenderTexture2D screen = LoadRenderTexture(GetScreenWidth(), GetScreenHeight());
-    //rmviFrame frame = rmviGetFrameBGCentered(center.x*2/3, center.y, 12, 6, 10, "Square", mathFont);
-    bool atom_defined = false;
-    rmviAtom atom;
-    rmviFrame frame = rmviGetFrameBGCentered(center.x*2/3, center.y, 12, 6, 10, "square", mathFont);
-    rmviFrame electron = rmviGetRoundFrameBGCentered(center.x*2/3, center.y, 12, 10, "e^-", mathFont);
-    float ratioX = 15.0f;
-    float ratioY = 7.5f;
-    float lineThick = 5.0f;
-    Vector4 count = {0, 0, 0, 0};
-    float sum = 0.0f;
-    rmviCarthesian carthesian = rmviGetCarthesian(center, (Vector2){SIZEXPLOT, SIZEXPLOT/RATIOYPLOT}, (Vector2){SIZEXPLOT/UNITRATIO, SIZEXPLOT/(UNITRATIO)});
-    rmviTree *tree = rmviCreateTree();
-
-    rmviFrame root0 = rmviGetFrameBGCentered(center.x*6.0f/5.0f, center.y, ratioX, ratioY, lineThick, "Initial", mathFont);
-    rmviFrame root1 = rmviGetFrameBGCentered(0,0, ratioX, ratioY, lineThick, "Haut//", mathFont);
-    rmviFrame root2 = rmviGetFrameBGCentered(0, 0, ratioX, ratioY, lineThick, "Droite//", mathFont);
-    rmviFrame root3 = rmviGetFrameBGCentered(0, 0, ratioX, ratioY, lineThick, "Bas//", mathFont);
-    rmviFrame root4 = rmviGetFrameBGCentered(0, 0, ratioX, ratioY, lineThick, "Gauche//", mathFont);
-    rmviAddFrame2Tree(tree, &root0, -1);
-    rmviAddFrame2Tree(tree, &root1, 0);
-    rmviAddFrame2Tree(tree, &root2, 0);
-    rmviAddFrame2Tree(tree, &root3, 0);
-    rmviAddFrame2Tree(tree, &root4, 0);
-
-    const char *textArrowsTree[] = {"P(e_i -> e_h) = 0.5// test // décale trop là", "Droite", "Bas", "Gauche","test",NULL};
-
-    rmviPositioningTree(tree, SPACETREERATIOX, SPACETREERATIOY);
-    int space_count = 0;
-    while (!WindowShouldClose())
-    {
-        BeginTextureMode(screen);
-            ClearBackground(BG);
-            if( IsKeyPressed(KEY_R)) {
-                speed = rmviRandomSpeed(&count);
-            }
-            if (IsKeyPressed(KEY_A)) {
-                frameInit = countFrame;
-            }
-            if(IsKeyPressed(KEY_E)) {
-               frameInit = -1; 
-            }
-            if (IsKeyPressed(KEY_B)) {
-                frame = rmviGetFrameBGCentered(center.x*2/3, center.y, 12, 6, 10, "square", mathFont);
-                speed = (Vector2){0, 0};
-            }
-            if (IsKeyPressed(KEY_Z)) {
-                count = (Vector4){0, 0, 0, 0};
-            }
-            if(IsKeyPressed(KEY_SPACE)){
-                space_count ++;
-                if(space_count > 3) space_count = 0;
-            }
-            if(space_count == 0){
-                rmviZoomFrame(&frame, 0.0f);
-                rmviZoomTree(tree, 0.0f);
-                sum = (float)(count.x + count.y + count.z + count.w);
-                rmviUpdateFrame(&frame, frame.outerRect.x + speed.x, frame.outerRect.y + speed.y, frame.outerRect.width, frame.outerRect.height, frame.lineThick, frame.innerColor, frame.outerColor, frame.text, mathFont);
-                rmviUpdateFrame(&root1, root1.outerRect.x , root1.outerRect.y, root1.outerRect.width, root1.outerRect.height, root1.lineThick, root1.innerColor, root1.outerColor, TextFormat( "Haut // %.3f", SAFE_RATIO(count.x, sum)) , mathFont);
-                rmviUpdateFrame(&root2, root2.outerRect.x , root2.outerRect.y, root2.outerRect.width, root2.outerRect.height, root2.lineThick, root2.innerColor, root2.outerColor, TextFormat(" Droite // %.3f", SAFE_RATIO(count.y, sum)) , mathFont);
-                rmviUpdateFrame(&root3, root3.outerRect.x , root3.outerRect.y, root3.outerRect.width, root3.outerRect.height, root3.lineThick, root3.innerColor, root3.outerColor, TextFormat(" Bas // %.3f", SAFE_RATIO(count.z, sum)) , mathFont);
-                rmviUpdateFrame(&root4, root4.outerRect.x , root4.outerRect.y, root4.outerRect.width, root4.outerRect.height, root4.lineThick, root4.innerColor, root4.outerColor, TextFormat(" Gauche // %.3f", SAFE_RATIO(count.w, sum)) , mathFont);
-                //rmviDrawArrowRect2((Vector2){root0.outerRect.x + root0.innerRect.width, root0.outerRect.y + root0.innerRect.height/2}, (Vector2){root1.outerRect.x, root1.outerRect.y + root1.outerRect.height/2}, 10, 1.0f, 0.5f, WHITE);
-                rmviPositioningTree(tree,SPACETREERATIOX, SPACETREERATIOY);
-                rmviDrawFrame(frame, RATIODEFAULT);
-                //rmviDrawTree(tree, 2);
-                rmviDrawTreeSquareWrite(tree, SPLIT_LEFT_ARROWS, textArrowsTree , DRAWCOLOR, RATIOWRITEARROWS, root0.innerRect.height/RATIODEFAULT);
-                rmviMyDrawText(TextFormat("N =  %d", (int)sum), (Vector2) {root0.outerRect.x + root0.innerRect.width*(2+SPACETREERATIOX), root0.outerRect.y + root0.outerRect.height/2-SIZETEXT/2}, SIZETEXT, WHITE);
-                if(frameInit != -1) {
-                    rmviWriteAnimText(TEST_DOUBLE_BEGIN, (Vector2) {center.x/2, center.y/2}, SIZETEXT, WHITE, frameInit, countFrame);
-                }
-            }
-            if(space_count == 1){
-                if(!atom_defined){
-                    rmviAtom he_3 = rmviGetAtom(NULL, "He_3", -1.00f, NULL);
-                    rmviFrame h_3_frame = rmviGetRoundFrameBGCentered(center.x*2/3, center.y, 12, 10, "H_3", mathFont);
-                    atom = rmviGetAtom(&h_3_frame, "H_3", 12.32f, &he_3);
-                    atom_defined = true;
-                }
-                if(rmviDesintegration(&atom, 1.00f/FPS)) {
-                    rmviUpdateAtom(&atom);
-                }
-                rmviDrawAtom(atom);
-            }
-            if(space_count == 2){
-                rmviDrawFrame(electron,RATIODEFAULT/2);
-            }
-            DrawFPS(10, 10);
-        EndTextureMode();
-        BeginDrawing();
-            ClearBackground(BG);
-            DrawTexturePro(screen.texture, (Rectangle){ 0, 0, (float)screen.texture.width, -(float)screen.texture.height }, (Rectangle){ 0, 0, (float)screen.texture.width, (float)screen.texture.height}, (Vector2){ 0, 0 }, 0.0f, WHITE);
-        EndDrawing();
-        //----------------------------------------------------------------------------------
-        
-        if (RECORDING) {
-            Image image = LoadImageFromTexture(screen.texture);
-            ffmpeg_send_frame_flipped(ffmpeg, image.data, GetScreenWidth(), GetScreenHeight());
-            UnloadImage(image);
+Color GetAverageColor(Texture2D texture) {
+    // On charge les pixels en RAM
+    Image img = LoadImageFromTexture(texture);
+    Color *pixels = LoadImageColors(img);
+    unsigned long long r = 0, g = 0, b = 0, a = 0;
+    int count = 0;
+    for (int i = 0; i < img.width * img.height; i++) {
+        // Ignorer les pixels noirs ou quasi-noirs
+        if (!(pixels[i].r < 10 && pixels[i].g < 10 && pixels[i].b < 10)) {
+            r += pixels[i].r;
+            g += pixels[i].g;
+            b += pixels[i].b;
+            a += pixels[i].a;
+            count++;
         }
-        countFrame++;
     }
-    UnloadFont(mathFont);
-    UnloadRenderTexture(screen);
-    if (RECORDING) ffmpeg_end_rendering(ffmpeg);
-    return 0;
+    Color avg = BLACK;
+    if (count > 0) {
+        avg.r = r / count;
+        avg.g = g / count;
+        avg.b = b / count;
+        avg.a = a / count; // ou 255 si tu veux forcer l’opacité
+    }
+    // Nettoyage mémoire
+    UnloadImageColors(pixels);
+    UnloadImage(img);
+    return avg;
+}
+
+
+void rmviDrawFourier(FourierCoeff *coeffs, int n, Vector2 origin, float scale, Color color, float time, Vector2 *figure) {
+    if (coeffs == NULL || n <= 0) return;
+    Vector2 prevPoint = origin; // Point initial au centre
+    for (int k = 0; k < n; k++) {
+        // Calcul du point actuel
+        DrawCircleLinesV(prevPoint, coeffs[k].amp * scale, color);
+        Vector2 currentPoint = {
+            prevPoint.x + coeffs[k].amp * scale * cosf(coeffs[k].freq *time + coeffs[k].phase), // Échelle pour la fréquence
+            prevPoint.y - coeffs[k].amp * scale* sinf(coeffs[k].freq * time + coeffs[k].phase) // Inversion de l'axe Y pour l'affichage
+        };
+        // Dessiner la ligne entre le point précédent et le point actuel
+        DrawLineV(prevPoint, currentPoint, color);
+        // Mettre à jour le point précédent
+        prevPoint = currentPoint;
+    }
+    if (figure != NULL) *figure = prevPoint;
 }

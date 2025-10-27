@@ -18,8 +18,8 @@ typedef struct {
    out_re/out_im : tableaux en sortie (taille N) - coefficients complexes
 */
 void computeFFT(const double *in_re, const double *in_im,
-                FourierCoeff *coeffs,
-                int N);
+                    FourierCoeff *coeffs,
+                    int Nfourier, int Npoint);
 
 #ifdef __cplusplus
 }

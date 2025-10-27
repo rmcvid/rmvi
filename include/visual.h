@@ -77,6 +77,13 @@ typedef struct rmviDash{
     Vector2 velocity;
 } rmviDash;
 
+typedef struct {
+    double *x;
+    double *y;
+    int n;  // nombre de points lus
+} rmviPointArray;
+
+
 
 typedef float (*MathFunction)(float);
 
@@ -146,6 +153,6 @@ void rmviGravityRepulsion(rmviDynamic2D **features, int n);
 
 // ----------------------------- Fourrier -----------------------------
 void rmviDrawFourier(FourierCoeff *coeffs, int n, Vector2 origin, float scale, Color color, float time, Vector2 *figure);  // dessine les cercles et le tracé
-
+void rmviDrawFourierFigure(float countFrame, Vector2 *figure, int timeFourier, int FPS, Color color);
 // fait tourner un rectangle autour de son centre
 #endif // VISUAL_H

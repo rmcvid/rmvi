@@ -14,6 +14,7 @@ Certaines modification ont été apportée dans raudio.c et raylib.h. Les modifi
   - Cleaner la partie latex ( introduction de case ?)
   - introdurie le son avec mini audio
   - Modifier l'output pour que celui-ci aille directement dans le bon dossier, implementer des racourcis clavier pour pouvoir nommer le jet ainsi que le supprimer si la sécance est mauvaise
+  - Raster to Vector Graphics Converter est une librairie en rust qui permet de vectoriser une image. Ce serait bien d'implémenter son utilisation afin de pouvoir automatiser image to fourrier
   
 ### Faire la vidéo sur la décomposition de fourier ( short?).
 - Montrer que le modèle où la terre est au centre peut fonctionner mais les trajectoires des corps celestes deviennent plus compliquées. Les anciens modélisaient ces trajectoires à l'aide de cercle concentrique tournant à des vitesse différentes.

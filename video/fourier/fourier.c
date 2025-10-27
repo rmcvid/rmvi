@@ -10,13 +10,13 @@
 #define CENTER (Vector2) {(float)GetScreenWidth()/2.0f, (float)GetScreenHeight()/2.0f} // centre de l'écran
 #define VECTOR20 (Vector2) {0.0f, 0.0f} // vecteur nul
 #define FRAME2SEC 100000                 // conversion frame en seconde
-#define MEMORY 1000                     // C'est dans des for ca ren le truc pas du totu efficace point qu'on conserve dans la mémoire pour desinner les orbites
+#define MEMORY 1000                     // C'est dans des for ca rent le truc pas du tout efficace point qu'on conserve dans la mémoire pour desinner les orbites
 #define TRANSITION_TIME 3.0f // en secondes
 #define SPACE_DASH 2 // espace entre les dashs en frame
 #define DISTANCE_CHANGE 480e9
 #define NBPLANETS 7
 
-#define NFOURIER 8 // nombre de coefficient de fourier
+#define NFOURIER 200 // nombre de coefficient de fourier
 
 Vector2 centerView; // centre initial sur le soleil
 Vector2 centerSpeed;
@@ -32,7 +32,6 @@ bool reset_dash = false;
 float frameInitCenterView = 0.0f, countFrame = 0.0f;                  // Début du centrage sur la terre
 
 Image image;    // pour ffmpeg
-
 
 const char *version;
 int bm_visual_initialisation(void) {
@@ -76,26 +75,16 @@ void addImageToffmpeg(void *ffmpeg) {
     UnloadImage(image);
 }
 
-void rmviDrawPlanet(rmviPlanet planet, Vector2 center) {
+void rmviDrawPlanet(rmviPlanet planet, Vector2 center, float scale) {
     // On centre la texture par rapport à la position
     Rectangle src = { 0, 0, (float)planet.visual.texture.width, (float)planet.visual.texture.height };
     Rectangle dest;
-    if(Vector2Distance((Vector2){center.x,center.y}, planet.features.position) < DISTANCE_CHANGE){
-        dest = (Rectangle){
-        CENTER.x + (- center.x + planet.features.position.x) /UA *UA2PIXEL,  // X centre
-        CENTER.y + (- center.y + planet.features.position.y) /UA *UA2PIXEL ,  // Y centre
-        planet.visual.width,         // largeur finale
-        planet.visual.height         // hauteur finale
-        };
-    }
-    else {
-        dest = (Rectangle) {
-        CENTER.x + (- center.x + planet.features.position.x) *UA2PIXEL_FAR /UA,  // X centre
-        CENTER.y + (- center.y  + planet.features.position.y) * UA2PIXEL_FAR /UA ,  // Y centre
-        planet.visual.width,         // largeur finale
-        planet.visual.height         // hauteur finale
-        };
-    }
+    dest = (Rectangle){
+    CENTER.x + (- center.x + planet.features.position.x) *scale,  // X centre
+    CENTER.y + (- center.y + planet.features.position.y) *scale,  // Y centre
+    planet.visual.width,         // largeur finale
+    planet.visual.height         // hauteur finale
+    };
     Vector2 origin = { planet.visual.width/2.0f, planet.visual.height/2.0f };
     DrawTexturePro(planet.visual.texture, src, dest, origin, 0.0f, WHITE);
 }
@@ -154,25 +143,19 @@ void rmviAddDash(rmviDash *dashPlanet, rmviDynamic2D *features, Vector2 center, 
     for(int i=0; i<n; i++){rmviAddDash(dashList[i], &planets[i]->features, planets[i]->features.velocity);}
 }*/
 
-void rmviDrawDashFast(rmviDash *dashPlanet, Vector2 center, Color color) {
+void rmviDrawDashFast(rmviDash *dashPlanet, Vector2 center, Color color, float scale, int n) {
     rlBegin(RL_LINES);
     rlColor4ub(color.r, color.g, color.b, color.a);
-    for (int i = 0; i < MEMORY; i++) {
+    for (int i = 0; i < n; i++) {
         Vector2 start, end;
-        if (Vector2Length(dashPlanet[i].position) < DISTANCE_CHANGE) {
-            start = Vector2Add(Vector2Scale(center,  UA2PIXEL / UA), Vector2Scale(dashPlanet[i].position, UA2PIXEL / UA));
-            end = Vector2Add(start, Vector2Scale(Vector2Normalize(dashPlanet[i].velocity), 10.0f));
-        } else {
-            start = Vector2Add(Vector2Scale(center, UA2PIXEL_FAR / UA), Vector2Scale(dashPlanet[i].position, UA2PIXEL_FAR / UA));
-            end = Vector2Add(start, Vector2Scale(Vector2Normalize(dashPlanet[i].velocity), 5.0f));
-        }
+        start = Vector2Add(Vector2Scale(center,  scale), Vector2Scale(dashPlanet[i].position, scale));
+        end = Vector2Add(start, Vector2Scale(Vector2Normalize(dashPlanet[i].velocity), 10.0f));
         rlVertex2f(CENTER.x + start.x, CENTER.y + start.y);
         rlVertex2f(CENTER.x + end.x, CENTER.y + end.y);
     }
 
     rlEnd();
 }
-
 /*void rmviDrawdashList(rmviDash **dashList, Vector2 center, int n){
     for(int i=0; i<n; i++){rmviDrawDash(dashList[i], center);}
 }*/
@@ -198,16 +181,50 @@ void slideOne(void){
         rmviUpdatePosition(planets[i], FRAME2SEC, centerSpeed);
         rmviAddDash(dashList[i], &planets[i]->features, centerView, centerSpeed);
         //rmviDrawDash(dashList[i], centerView, colorListPlanet[i]);
-        rmviDrawDashFast(dashList[i], VECTOR20, colorListPlanet[i]);
-        rmviDrawPlanet(*planets[i], centerView);
+        rmviDrawDashFast(dashList[i], VECTOR20, colorListPlanet[i], i < 5 ? (UA2PIXEL / UA) : (UA2PIXEL_FAR / UA), MEMORY);
+        rmviDrawPlanet(*planets[i], centerView, i < 5 ? (UA2PIXEL / UA) : (UA2PIXEL_FAR / UA));
     }
 }
 
-FourierCoeff *testFFT(void) {
-    double x[16] = { 0.0,  0.5,  1.0,  1.0,  0.5,  0.0, -0.5, -1.0, -1.0, -0.5,  0.0,  0.3,  0.5,  0.2,  0.0,  0.0 };
-    double y[16] = { 0.0,  0.5,  1.0,  0.5,  0.8,  0.5,  0.8,  1.0,  0.5,  0.5,  0.0, -0.2, -0.3, -0.1,  0.0,  0.0 };
+rmviPointArray read_csv_points(const char *filename) {
+    rmviPointArray points = {NULL, NULL, 0};
+    FILE *fp = fopen(filename, "r");
+    if (!fp) {
+        perror("Erreur d'ouverture du fichier");
+        return points;
+    }
+    // Première passe : compter le nombre de lignes
+    char line[256];
+    int count = 0;
+    while (fgets(line, sizeof(line), fp)) {
+        if (line[0] == '\n' || line[0] == '#') continue;  // ignorer lignes vides ou commentaires
+        count++;
+    }
+    rewind(fp); // revenir au début du fichier
+    points.x = malloc(count * sizeof(double));
+    points.y = malloc(count * sizeof(double));
+    if (!points.x || !points.y) {
+        fprintf(stderr, "Erreur d'allocation mémoire.\n");
+        fclose(fp);
+        return points;
+    }
+
+    // Deuxième passe : lecture des valeurs
+    int i = 0;
+    while (fgets(line, sizeof(line), fp) && i < count) {
+        if (line[0] == '\n' || line[0] == '#') continue;
+        if (sscanf(line, "%lf,%lf", &points.x[i], &points.y[i]) == 2) {
+            i++;
+        }
+    }
+
+    points.n = i;
+    fclose(fp);
+    return points;
+}
+FourierCoeff *testFFT(rmviPointArray points){
     FourierCoeff *coeffs = malloc(NFOURIER * sizeof(FourierCoeff));
-    computeFFT(x, y, coeffs, NFOURIER);
+    computeFFT(points.x, points.y, coeffs, NFOURIER, points.n);
     if (!coeffs) {
         fprintf(stderr, "Erreur allocation coeffs\n");
         return NULL;
@@ -223,16 +240,33 @@ int bm_visual_main(void)
     for (int i = 0; i < sizeof(planets) / sizeof(planets[0]); i++){ colorListPlanet[i] = GetAverageColor(planets[i]->visual.texture);}
     centerView = sun.features.position; // centre initial sur le soleil
     centerSpeed = VECTOR20;
-    FourierCoeff *coeff = testFFT();
+    int timeFourier = 10;
+    Vector2 *figure = malloc(FPS * timeFourier * sizeof(Vector2));
+    //rmviPointArray points = read_csv_points("C:\\Users\\ryanm\\Documents\\Rmvi\\animation\\video\\fourier\\Image\\points_fourier.csv");
+    rmviPointArray points = read_csv_points("C:\\Users\\ryanm\\Documents\\Rmvi\\animation\\ryan_jupyter.csv");
+    FourierCoeff *coeff = testFFT(points);
+    const char *t1 = "Bonjour Quentin! //Ce chère monsieur";
+    const char *t2 = "Te souhaite un joyeux anniversaire!";
+    float w1 = rmviCalcTextWidth(t1, mathFont,60,60/15);
+    float w2 = rmviCalcTextWidth(t2, mathFont,60,60/15);
+
     while (!WindowShouldClose())
     {
         BeginTextureMode(screen);
             ClearBackground(BG);
             if(IsKeyPressed(KEY_M)) rec.isRecording ? StopAudioRecorder(&rec) : StartAudioRecorder(&rec);
-            if(IsKeyPressed(KEY_SPACE)) space_count ++;
+            if(IsKeyPressed(KEY_SPACE)){
+                space_count ++;
+                countFrame = 0;
+            }
             if(IsKeyPressed(KEY_R)) reset_dash = true;
             //slideOne();
-            rmviDrawFourier(coeff, NFOURIER, CENTER, 100.0f, WHITE, countFrame * NFOURIER/(2*PI * FPS* 5.0f), NULL);
+            if(space_count == 0)  rmviWriteAnimText(t1 ,(Vector2) {CENTER.x - w1/2, CENTER.y} ,60, WHITE,0,countFrame);
+            else if (space_count == 1){
+                if (countFrame < FPS*timeFourier) rmviDrawFourier(coeff, NFOURIER, CENTER, 10.00f, WHITE, 2.0f * PI * (float)countFrame/((float)FPS * timeFourier * (coeff[1].freq)), countFrame < FPS*timeFourier ? &figure[(int) countFrame] : NULL);
+                rmviDrawFourierFigure(countFrame, figure, timeFourier, FPS, WHITE);
+            }
+            else if (space_count == 2) rmviWriteAnimText(t2 ,(Vector2) {CENTER.x - w2/2, CENTER.y},60, WHITE,0, countFrame);
             //DrawText(rec.isRecording ? "Recording..." : "Idle", 20, 20, 20, WHITE);
             DrawFPS(10, 10);
         EndTextureMode();
@@ -240,6 +274,7 @@ int bm_visual_main(void)
         if (RECORDING) addImageToffmpeg(ffmpeg);
         countFrame++;
     }
+    free(figure);
     return 0;
 }
 

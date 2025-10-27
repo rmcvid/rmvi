@@ -7,7 +7,7 @@
 #include "ffmpeg.h"
 #include "text2Latex.h"
 
-#define RECORDING 0 // 1 to record video, 0 to not record
+#define RECORDING 1 // 1 to record video, 0 to not record
 #define AUDIO_RECORDING 0 // 1 to record audio, 0 to not record
 
 #define FPS 50

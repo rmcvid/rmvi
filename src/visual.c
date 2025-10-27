@@ -709,3 +709,17 @@ void rmviDrawFourier(FourierCoeff *coeffs, int n, Vector2 origin, float scale, C
     }
     if (figure != NULL) *figure = prevPoint;
 }
+
+void rmviDrawFourierFigure(float countFrame, Vector2 *figure, int timeFourier, int FPS, Color color) {
+    rlBegin(RL_LINES);
+        rlColor4ub(color.r, color.g, color.b, color.a);
+        for(int i = 1; i < min(countFrame, timeFourier * FPS); i++){
+            rlVertex2f(figure[i-1].x, figure[i-1].y);
+            rlVertex2f(figure[i].x, figure[i].y);
+            if (i == (timeFourier * FPS - 1)) {
+                rlVertex2f(figure[i].x, figure[i].y);
+                rlVertex2f(figure[0].x, figure[0].y);
+            }
+        }
+    rlEnd();
+}

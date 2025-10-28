@@ -2,8 +2,6 @@ from svgpathtools import svg2paths
 
 # Charge le SVG
 paths, attributes = svg2paths(r"C:\\Users\\ryanm\\Documents\\Rmvi\\animation\\point.svg")
-
-
 # Prend le premier chemin
 path = paths[0]
 

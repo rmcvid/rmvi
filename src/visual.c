@@ -204,6 +204,79 @@ void rmviRotateRectangle(Rectangle rec, Vector2 origin, float rotation, Color co
 
     rlEnd();
 }
+// fait tourner une rectangle autour du point origin. 0,0 est le centre de la texture
+void rmviRotateTexture(Texture2D texture, Rectangle source, Rectangle dest, Vector2 origin, float rotation, Color tint){
+    if(texture.id > 0){   
+        float width = (float)texture.width;
+        float height = (float)texture.height;
+
+        bool flipX = false;
+
+        if (source.width < 0) { flipX = true; source.width *= -1; }
+        if (source.height < 0) source.y -= source.height;
+
+        if (dest.width < 0) dest.width *= -1;
+        if (dest.height < 0) dest.height *= -1;
+
+        Vector2 topLeft = { 0 };
+        Vector2 topRight = { 0 };
+        Vector2 bottomLeft = { 0 };
+        Vector2 bottomRight = { 0 };
+        // Only calculate rotation if needed
+        if (rotation == 0.0f)
+        {
+            topLeft = (Vector2){ dest.x, dest.y };
+            topRight = (Vector2){ dest.x + dest.width, dest.y };
+            bottomLeft = (Vector2){ dest.x, dest.y + dest.height };
+            bottomRight = (Vector2){ dest.x + dest.width, dest.y + dest.height };
+        }
+        else
+        {
+            float sinRotation = sinf(rotation*DEG2RAD);
+            float cosRotation = cosf(rotation*DEG2RAD);
+            float x = dest.x;
+            float y = dest.y;
+            float rx =  dest.x + dest.width/2 + origin.x;
+            float ry =  dest.y + dest.height/2 + origin.y;
+            topLeft.x = x * cosRotation + y*sinRotation - rx * (cosRotation-1) - ry * sinRotation;
+            topLeft.y = - x *sinRotation + y*cosRotation - ry * (cosRotation-1) + rx * sinRotation;
+            topRight.x = (x + dest.width)*cosRotation + y*sinRotation - rx * (cosRotation-1) - ry * sinRotation;
+            topRight.y = -(x + dest.width)*sinRotation + y*cosRotation - ry * (cosRotation-1) + rx * sinRotation;
+            bottomLeft.x = x * cosRotation + (y+dest.height)*sinRotation - rx * (cosRotation-1) - ry * sinRotation;
+            bottomLeft.y = - x*sinRotation + (y+dest.height)*cosRotation - ry * (cosRotation-1) + rx * sinRotation;
+            bottomRight.x = (x + dest.width)*cosRotation + (y + dest.height)*sinRotation - rx * (cosRotation-1) - ry * sinRotation;
+            bottomRight.y = -(x + dest.width)*sinRotation + (y + dest.height)*cosRotation - ry * (cosRotation-1) + rx * sinRotation;
+        }
+        rlSetTexture(texture.id);
+        rlBegin(RL_QUADS);
+
+            rlColor4ub(tint.r, tint.g, tint.b, tint.a);
+            rlNormal3f(0.0f, 0.0f, 1.0f); 
+
+             // Top-left corner for texture and quad
+            if (flipX) rlTexCoord2f((source.x + source.width)/width, source.y/height);
+            else rlTexCoord2f(source.x/width, source.y/height);
+            rlVertex2f(topLeft.x, topLeft.y);
+
+            // Bottom-left corner for texture and quad
+            if (flipX) rlTexCoord2f((source.x + source.width)/width, (source.y + source.height)/height);
+            else rlTexCoord2f(source.x/width, (source.y + source.height)/height);
+            rlVertex2f(bottomLeft.x, bottomLeft.y);
+
+            // Bottom-right corner for texture and quad
+            if (flipX) rlTexCoord2f(source.x/width, (source.y + source.height)/height);
+            else rlTexCoord2f((source.x + source.width)/width, (source.y + source.height)/height);
+            rlVertex2f(bottomRight.x, bottomRight.y);
+
+            // Top-right corner for texture and quad
+            if (flipX) rlTexCoord2f(source.x/width, source.y/height);
+            else rlTexCoord2f((source.x + source.width)/width, source.y/height);
+            rlVertex2f(topRight.x, topRight.y);
+
+        rlEnd();
+        rlSetTexture(0);
+    }
+}
 
 
 // ---------------------------- Object build ----------------------------
@@ -640,6 +713,20 @@ float rmviRand() {
     return (float)rand() / (float)RAND_MAX;
 }
 
+// Retourne une loi normale centrée réduite : N(0,1)
+float rmviRandomNormalCentered(){
+    // Box-Muller: transforme 2 uniformes en un normal
+    float u1 = (rand() + 1.0f) / (RAND_MAX + 2.0f);
+    float u2 = (rand() + 1.0f) / (RAND_MAX + 2.0f);
+
+    float z = sqrtf(-2.0f * logf(u1)) * cosf(2.0f * PI * u2);
+    return z;
+}
+float rmviRandNormal(float mean, float sigma)
+{
+    return mean + sigma * rmviRandomNormalCentered();
+}
+
 // Tire cosθ distribué selon W(cosθ) ∝ 1 + a·β_e·cosθ
 // a : coefficient de corrélation bêta-neutrino
 // beta_e : vitesse e-/c (0 < beta_e < 1)
@@ -722,4 +809,83 @@ void rmviDrawFourierFigure(float countFrame, Vector2 *figure, int timeFourier, i
             }
         }
     rlEnd();
+}
+
+// ----------------------------- Jsons ---------------------------------
+
+char* rmviReadFile(const char *filename) {
+    FILE *f = fopen(filename, "rb");
+    if (!f) return NULL;
+
+    fseek(f, 0, SEEK_END);
+    long length = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    char *data = (char*)malloc(length + 1);
+    fread(data, 1, length, f);
+    data[length] = '\0';
+
+    fclose(f);
+    return data;
+}
+Anime2* rmviAnime2FromJSON(const char *jsonStr) {
+    if (!jsonStr) return NULL;
+
+    cJSON *root = cJSON_Parse(jsonStr);
+    if (!root) return NULL;
+
+    int ncontours = cJSON_GetArraySize(root);
+    if (ncontours == 0) {
+        cJSON_Delete(root);
+        return NULL;
+    }
+
+    Anime2 *anime = (Anime2*)malloc(sizeof(Anime2));
+    anime->ncontours = ncontours;
+    anime->contours = (Contour2*)malloc(sizeof(Contour2) * ncontours);
+
+    int i = 0;
+    cJSON *contourItem = NULL;
+    cJSON_ArrayForEach(contourItem, root) {
+        cJSON *pointsArray = contourItem;
+        int npoints = cJSON_GetArraySize(pointsArray);
+        Vector2 *points = (Vector2*)malloc(sizeof(Vector2) * npoints);
+
+        for (int j = 0; j < npoints; j++) {
+            cJSON *pt = cJSON_GetArrayItem(pointsArray, j);
+            if (!cJSON_IsArray(pt) || cJSON_GetArraySize(pt) < 2) continue;
+
+            points[j].x = (float)cJSON_GetArrayItem(pt,0)->valuedouble;
+            points[j].y = (float)cJSON_GetArrayItem(pt,1)->valuedouble;
+        }
+
+        anime->contours[i].points = points;
+        anime->contours[i].npoints = npoints;
+        i++;
+    }
+
+    cJSON_Delete(root);
+    return anime;
+}
+void rmviAnime2Free(Anime2 *anime) {
+    if (!anime) return;
+
+    for (int i = 0; i < anime->ncontours; i++) {
+        free(anime->contours[i].points);
+    }
+    free(anime->contours);
+    free(anime);
+}
+
+void rmvidrawAnime2(Anime2 *anime, Vector2 position, float scale, Color color, bool invertY ) {
+    if (!anime) return;
+
+    for (int i = 0; i < anime->ncontours; i++) {
+        Contour2 contour = anime->contours[i];
+        for (int j = 0; j < contour.npoints - 1; j++) {
+            Vector2 p1 = (Vector2){ position.x + contour.points[j].x * scale,  position.y + (invertY ? -1 : 1) * contour.points[j].y * scale };
+            Vector2 p2 = (Vector2){ position.x + contour.points[j+1].x * scale,  position.y + (invertY ? -1 : 1) * contour.points[j+1].y * scale};
+            DrawLineV(p1, p2, color);
+        }
+    }
 }

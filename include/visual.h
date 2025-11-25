@@ -6,6 +6,7 @@
 #include "rlgl.h"
 #include "text2Latex.h"
 #include "fft_wrapper.h"
+#include "cJSON.h"
 
 typedef struct {
     Rectangle outerRect;
@@ -83,6 +84,16 @@ typedef struct {
     int n;  // nombre de points lus
 } rmviPointArray;
 
+typedef struct {
+    Vector2 *points;   // tableau de points
+    int npoints;       // nombre de points
+} Contour2;
+
+typedef struct {
+    Contour2 *contours;  // tableau de contours
+    int ncontours;       // nombre de contours
+} Anime2;
+
 
 
 typedef float (*MathFunction)(float);
@@ -131,6 +142,9 @@ void rmviPositioningTree(rmviTree *tree,float spaceTreeRatioX, float spaceTreeRa
 
 
 float rmviRand();
+float rmviRandNormalCentered();
+float rmviRandNormal(float mean, float sigma);
+
 Vector2 rmviRandomSpeed(Vector4 *count);
 bool rmviVector2IsZero(Vector2 vec);
 // ----------------------------- ATOMS AND TREE -----------------------------
@@ -142,6 +156,9 @@ bool rmviDesintegration(rmviAtom *atom, float deltaTime);
 void rmviAtomUpdate(rmviAtom *atom);
 rmviAtom rmviGetAtomSpeed(rmviFrame *frame, const char *nature, float lifespan, rmviAtom *daughter, Vector2 speed);
 rmviFrame rmviGetElectron(float posX, float posY);
+
+// ----------------------------- Texture -----------------------------
+void rmviRotateTexture(Texture2D texture, Rectangle source, Rectangle dest, Vector2 origin, float rotation, Color tint);
 
 // ----------------------------- Color -----------------------------
 Color GetAverageColor(Texture2D texture);
@@ -155,4 +172,9 @@ void rmviGravityRepulsion(rmviDynamic2D **features, int n);
 void rmviDrawFourier(FourierCoeff *coeffs, int n, Vector2 origin, float scale, Color color, float time, Vector2 *figure);  // dessine les cercles et le tracé
 void rmviDrawFourierFigure(float countFrame, Vector2 *figure, int timeFourier, int FPS, Color color);
 // fait tourner un rectangle autour de son centre
+// ------------------------------ JSON ------------------------------
+char* rmviReadFile(const char *filename);
+Anime2* rmviAnime2FromJSON(const char *jsonStr);
+void rmviAnime2Free(Anime2 *anime);
+void rmvidrawAnime2(Anime2 *anime, Vector2 position, float scale, Color color, bool invertY );
 #endif // VISUAL_H

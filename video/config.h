@@ -3,11 +3,13 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include "visual.h"
 #include "ffmpeg.h"
+#include "cJSON.h"
 #include "text2Latex.h"
 
-#define RECORDING 1 // 1 to record video, 0 to not record
+#define RECORDING 0 // 1 to record video, 0 to not record
 #define AUDIO_RECORDING 0 // 1 to record audio, 0 to not record
 
 #define FPS 50
@@ -31,7 +33,7 @@ void *ffmpeg = NULL;
 #define DRAWCOLOR WHITE
 #define RATIODEFAULT 4.5      // ratio entre la hauteur du rectangle et la hauteur du texte
 #define SAFE_RATIO(num, den) ((den) != 0 ? (float)(num) / (float)(den) : 0.0f) // affiche 0 quand diviser par zero
-
+#define VECTOR20 (Vector2) {0.0f, 0.0f} // vecteur nul
 RenderTexture2D screen;
 RecordDevice rec;
 

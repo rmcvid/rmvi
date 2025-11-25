@@ -8,7 +8,7 @@
 #define UA2PIXEL 200.0f // facteur d'échelle pour les distances
 #define UA2PIXEL_FAR 130.0f
 #define CENTER (Vector2) {(float)GetScreenWidth()/2.0f, (float)GetScreenHeight()/2.0f} // centre de l'écran
-#define VECTOR20 (Vector2) {0.0f, 0.0f} // vecteur nul
+
 #define FRAME2SEC 100000                 // conversion frame en seconde
 #define MEMORY 1000                     // C'est dans des for ca rent le truc pas du tout efficace point qu'on conserve dans la mémoire pour desinner les orbites
 #define TRANSITION_TIME 3.0f // en secondes
@@ -243,10 +243,10 @@ int bm_visual_main(void)
     int timeFourier = 10;
     Vector2 *figure = malloc(FPS * timeFourier * sizeof(Vector2));
     //rmviPointArray points = read_csv_points("C:\\Users\\ryanm\\Documents\\Rmvi\\animation\\video\\fourier\\Image\\points_fourier.csv");
-    rmviPointArray points = read_csv_points("C:\\Users\\ryanm\\Documents\\Rmvi\\animation\\ryan_jupyter.csv");
+    rmviPointArray points = read_csv_points("C:\\Users\\ryanm\\Documents\\Rmvi\\animation\\video\\fourier\\Image\\ryan_jupyter.csv");
     FourierCoeff *coeff = testFFT(points);
-    const char *t1 = "Bonjour Quentin! //Ce chère monsieur";
-    const char *t2 = "Te souhaite un joyeux anniversaire!";
+    const char *t1 = "Bonjour Louis! //Ce cher ff";
+    const char *t2 = "Te dis bah";
     float w1 = rmviCalcTextWidth(t1, mathFont,60,60/15);
     float w2 = rmviCalcTextWidth(t2, mathFont,60,60/15);
 
@@ -260,13 +260,14 @@ int bm_visual_main(void)
                 countFrame = 0;
             }
             if(IsKeyPressed(KEY_R)) reset_dash = true;
-            //slideOne();
+            slideOne();
             if(space_count == 0)  rmviWriteAnimText(t1 ,(Vector2) {CENTER.x - w1/2, CENTER.y} ,60, WHITE,0,countFrame);
-            else if (space_count == 1){
+            /*else if (space_count == 1){
                 if (countFrame < FPS*timeFourier) rmviDrawFourier(coeff, NFOURIER, CENTER, 10.00f, WHITE, 2.0f * PI * (float)countFrame/((float)FPS * timeFourier * (coeff[1].freq)), countFrame < FPS*timeFourier ? &figure[(int) countFrame] : NULL);
                 rmviDrawFourierFigure(countFrame, figure, timeFourier, FPS, WHITE);
-            }
+            }*/
             else if (space_count == 2) rmviWriteAnimText(t2 ,(Vector2) {CENTER.x - w2/2, CENTER.y},60, WHITE,0, countFrame);
+            else if (space_count > 2) slideOne();
             //DrawText(rec.isRecording ? "Recording..." : "Idle", 20, 20, 20, WHITE);
             DrawFPS(10, 10);
         EndTextureMode();

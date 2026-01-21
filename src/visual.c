@@ -4,6 +4,12 @@
 #include "fft_wrapper.h"
 #include <stdio.h>
 #include <stdlib.h>
+#ifdef _WIN32
+    #define popen  _popen
+    #define pclose _pclose
+#endif
+
+
 //#include <fftw3.h>
 #define DRAWCOLOR WHITE
 #define BG BLACK
@@ -16,6 +22,8 @@
 #define ARROWSIZE 20.0f     // gives the size arrow divided by ratio i think
 #define SPLIT_LEFT_ARROWS 0.2f // gives the left split for arrowsRect
 #define RATIOWRITEARROWS 0.5f
+
+
 //---------------------------------- RECTANGLE AND FRAMES ---------------------------------
 void rmviMyDrawText(const char *text, Vector2 position, float size, Color color) {
     if (text == NULL || strlen(text) == 0) return;
@@ -749,6 +757,11 @@ rmviPlanet rmviGetPlanet(Vector2 position, float mass, Vector2 velocity, Vector2
     return planet;
 }
 
+rmviPlanet3D rmviGetPlanet3D(Vector3 position, float mass, Vector3 velocity, Vector3 force, const char* modelPath){
+    rmviPlanet3D planet = {.features = { position, mass, velocity, force }, .model = LoadModel(modelPath) };
+    return planet;
+}
+
 Color GetAverageColor(Texture2D texture) {
     // On charge les pixels en RAM
     Image img = LoadImageFromTexture(texture);
@@ -889,3 +902,134 @@ void rmvidrawAnime2(Anime2 *anime, Vector2 position, float scale, Color color, b
         }
     }
 }
+
+static float GetVideoFPS(const char *mp4Path)
+{
+    char cmd[512];
+    snprintf(cmd, sizeof(cmd),
+        "ffprobe -v error -select_streams v:0 "
+        "-show_entries stream=r_frame_rate "
+        "-of default=noprint_wrappers=1:nokey=1 "
+        "\"%s\"", mp4Path);
+    FILE *pipe = popen(cmd, "r");
+    if (!pipe) return 0.0f;
+    char buffer[128] = {0};
+    fgets(buffer, sizeof(buffer), pipe);
+    pclose(pipe);
+    int num = 0, den = 1;
+    if (sscanf(buffer, "%d/%d", &num, &den) == 2 && den != 0)
+        return (float)num / (float)den;
+    return 0.0f;
+}
+
+
+void mp4ToTexture(const char *pathFile, const char *outDir, const char *name){
+    char cmd_buffer[2048];
+    snprintf(cmd_buffer, sizeof(cmd_buffer),
+        "ffmpeg -y -i \"%s\" "
+        "\"%s/%s_%%04d.jpg\" "
+        "-vn -acodec pcm_s16le -ar 44100 -ac 2 "
+        "\"%s/%s.wav\"",
+        pathFile, outDir, name,
+        outDir, name);
+    printf("Running ffmpeg:\n%s\n", cmd_buffer);
+    system(cmd_buffer);
+}
+static bool FileExistsSimple(const char *path){
+    FILE *f = fopen(path, "rb");
+    if (!f) return false;
+    fclose(f);
+    return true;
+}
+
+static int CountVideoFrames(const char *dir, const char *name){
+    char path[512];
+    int count = 0;
+    for (int i = 1; ; i++)
+    {
+        snprintf(path, sizeof(path),
+                 "%s/%s_%04d.jpg", dir, name, i);
+        if (!FileExistsSimple(path))
+            break;
+        count++;
+    }
+    return count;
+}
+
+Video LoadVideo(const char *mp4Path, const char *outDir, const char *name, float fallbackFPS){
+    Video v = {0};
+    v.current = 0;
+    v.timer = 0.0f;
+    v.started = false;
+    v.finished = false;
+    float fps = fallbackFPS;
+    if (fallbackFPS == 0) fps = GetVideoFPS(mp4Path);
+    v.fps = fps; 
+    // ---- fichiers existants ? ----
+    int frameCount = CountVideoFrames(outDir, name);
+    char wavPath[512];
+    snprintf(wavPath, sizeof(wavPath),
+             "%s/%s.wav", outDir, name);
+    bool hasAudioFile = FileExistsSimple(wavPath);
+    // ---- sinon on génère ----
+
+    if (frameCount == 0 || !hasAudioFile){
+        mp4ToTexture(mp4Path, outDir, name);
+        frameCount = CountVideoFrames(outDir, name);
+    }
+    // ---- charger les textures ----
+    v.frameCount = frameCount;
+    v.frames = (Texture2D *)malloc(sizeof(Texture2D) * frameCount);
+    char imgPath[512];
+    SetTraceLogLevel(LOG_NONE);
+    for (int i = 0; i < frameCount; i++)
+    {
+        snprintf(imgPath, sizeof(imgPath),
+                 "%s/%s_%04d.jpg", outDir, name, i + 1);
+
+        v.frames[i] = LoadTexture(imgPath);
+    }
+    SetTraceLogLevel(LOG_INFO);
+    // ---- charger l'audio ----
+    if (FileExistsSimple(wavPath)){
+        v.audio = LoadMusicStream(wavPath);
+        v.hasAudio = true;
+    }
+    else{
+        v.hasAudio = false;
+    }
+    return v;
+}
+
+void PlayVideo(Video *video)
+{
+    // Déjà terminée → rien à faire
+    if (video->finished)
+        return;
+    if (video->hasAudio && !video->started)
+    {
+        PlayMusicStream(video->audio);
+        video->started = true;
+    }
+    if (video->hasAudio)
+        UpdateMusicStream(video->audio);
+    float t = video->hasAudio ? GetMusicTimePlayed(video->audio) : 0.0f;
+    int frame = (int)(t * video->fps);
+    if (frame >= video->frameCount)
+    {
+        if (video->hasAudio)
+        {
+            StopMusicStream(video->audio);
+            UnloadMusicStream(video->audio);
+            video->hasAudio = false;
+        }
+        video->finished = true;
+        return; // plus rien n’est dessiné
+    }
+    if (frame < 0)
+        frame = 0;
+    DrawTexture(video->frames[frame], 0, 0, WHITE);
+}
+
+
+

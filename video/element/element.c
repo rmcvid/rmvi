@@ -1,4 +1,5 @@
 #include "config.h"
+#include <math.h>
 #define TSTHICK 2.0f
 #define RATIOTICKTHICK 2.0f
 #define RATIOTICKSIZE 5.0f
@@ -30,10 +31,102 @@ typedef struct{
 } particle;
 
 typedef struct {
-    particle *data;   // tableau dynamique
-    int count;        // nombre de particules actives
-    int capacity;     // taille max du tableau
+    void *data;     // tableau dynamique générique
+    int count;
+    int capacity;
+    size_t elem_size;  // taille d’un élément
 } ParticleSystem;
+
+typedef struct{
+    Vector2 position;
+    Vector2 velocity;
+    float temperature;
+    float radius;
+}lParticle;
+
+// test for liquid
+float smoothingRadius;
+Vector2 a;
+
+ParticleSystem initParticleSystem(int n, size_t size) {
+    ParticleSystem ps;
+    ps.elem_size = size;
+    ps.capacity = n;
+    ps.data = malloc( ps.elem_size * ps.capacity);
+    ps.count = 0;
+    return ps;
+}
+
+void particleSystem_grow(ParticleSystem *ps) {
+    ps->capacity *= 2;
+    ps->data = realloc(ps->data, ps->capacity * ps->elem_size);
+}
+float rmviMax(float a, float b){
+    return a > b ? a : b;
+}
+// smooth particle hydrodynamic technique
+float smoothingKernel(float smoothingRadius, float distance){
+    return powf(rmviMax(0,powf( smoothingRadius,2) - powf(distance,2) ),3) / ( PI* powf(smoothingRadius,8)/4);
+}
+float calculateDensity(Vector2 point, ParticleSystem *ps){
+    float density = 0;
+    float mass = 1000;
+    for( int i = 0; i < ps->count; i++){
+        float dist = Vector2Distance(((lParticle*)ps->data)[i].position,point);
+        float influence = smoothingKernel(smoothingRadius, dist);
+        density += mass*influence;
+    }
+    return density;
+}
+
+void liquidSource(Rectangle rec, float radius, ParticleSystem *ps){
+    int nlength = (int)  (rec.width / radius);
+    int nheight = (int) (rec.height / radius);
+    while(ps->count + nlength*nheight >= ps->capacity) particleSystem_grow(ps); 
+    for (int i = 0; i < nlength; i ++){
+        for(int j = 0; j < nheight; j ++){
+            lParticle p ={
+                .position = Vector2Add(
+                    (Vector2){rec.x,rec.y},
+                    (Vector2){(2*i+1/2)*radius, (2*j+1/2)* radius}
+                ),
+                .velocity = Vector2Zero(),
+                .radius = radius
+            };
+            ((lParticle*)ps->data)[ps->count++] = p;
+        }
+    }
+}
+void liquidUpdate(lParticle *p, Vector2 acceleration, float deltatime){
+    p->velocity = Vector2Add(p->velocity , Vector2Scale(acceleration, deltatime));
+    p->position = Vector2Add(p->position , Vector2Scale(p->velocity, deltatime));
+}
+void resolveColision(lParticle *p){
+    if(p->position.x < 0){
+        p->position.x = 0;
+        p->velocity.x *= -1;
+    }
+    else if (p->position.x > GetScreenWidth()){
+        p->position.x = GetScreenWidth();
+        p->velocity.x *= -1;
+    }
+    if(p->position.y < 0){
+        p->position.y = 0;
+        p->velocity.y *= -1;
+    }
+    else if (p->position.y > GetScreenHeight()){
+        p->position.y = GetScreenHeight();
+        p->velocity.y *= -1;
+    }
+}
+void drawlParticle(ParticleSystem *ps){
+    for (int i = 0; i < ps->count; i++){
+        lParticle* p = &((lParticle*)ps->data)[i];
+        liquidUpdate(p,a,0.1);
+        resolveColision(p);
+        DrawCircleV(p->position,p->radius,BLUE);
+    }
+}
 
 
 void DrawRasenganCore(Vector2 center, float radius, float time){
@@ -52,6 +145,7 @@ void DrawRasenganCore(Vector2 center, float radius, float time){
         DrawEllipse(center.x + swirl, center.y, rLayer, rLayer, col);
     }
 }
+
 
 void initBriques(Texture2D text, Rectangle* briques){
     // Ligne 1
@@ -114,17 +208,9 @@ void drawBriques(Rectangle* briques, Texture2D text, Vector2* positions, float s
 }
 
 
-ParticleSystem initParticleSystem(int initialCapacity) {
-    ParticleSystem ps;
-    ps.data = malloc(sizeof(particle) * initialCapacity);
-    ps.count = 0;
-    ps.capacity = initialCapacity;
-    return ps;
-}
-void particleSystem_grow(ParticleSystem *ps) {
-    ps->capacity *= 2;
-    ps->data = realloc(ps->data, ps->capacity * sizeof(particle));
-}
+
+// à améliorer pour pas doubler à chaque fois mais trkl
+
 
 void rasenganSource(Vector2 center, ParticleSystem *ps, int num, float radius) {
     for (int i = 0; i < num; i++) {
@@ -146,24 +232,24 @@ void rasenganSource(Vector2 center, ParticleSystem *ps, int num, float radius) {
             .velocity = Vector2Scale(tangent, speed),
             .temperature = -1.0f
         };
-        ps->data[ps->count++] = p;
+        ((particle*)ps->data)[ps->count++] = p;
     }
 }
 void rasenganParticlesUpdate(ParticleSystem *ps, Vector2 center, float R) {
     for (int i = 0; i < ps->count; i++) {
-        Vector2 offset = Vector2Subtract(ps->data[i].position, center);
+        Vector2 offset = Vector2Subtract(((particle*)ps->data)[i].position, center);
         float dist = Vector2Length(offset);
         Vector2 tangent = Vector2Normalize((Vector2){ -offset.y, offset.x });
         Vector2 tangentialPush = Vector2Scale(tangent, 0.07f);
         Vector2 centerPull = Vector2Scale(offset, -0.005f);
         Vector2 noise = { rmviRandNormal(0, 0.1f), rmviRandNormal(0, 0.1f) };
-        ps->data[i].velocity = Vector2Add(ps->data[i].velocity, tangentialPush);
-        ps->data[i].velocity = Vector2Add(ps->data[i].velocity, centerPull);
-        ps->data[i].velocity = Vector2Add(ps->data[i].velocity, noise);
-        ps->data[i].position = Vector2Add(ps->data[i].position, ps->data[i].velocity);
+        ((particle*)ps->data)[i].velocity = Vector2Add(((particle*)ps->data)[i].velocity, tangentialPush);
+        ((particle*)ps->data)[i].velocity = Vector2Add(((particle*)ps->data)[i].velocity, centerPull);
+        ((particle*)ps->data)[i].velocity = Vector2Add(((particle*)ps->data)[i].velocity, noise);
+        ((particle*)ps->data)[i].position = Vector2Add(((particle*)ps->data)[i].position, ((particle*)ps->data)[i].velocity);
         // --- 1. Si dehors -> respawn
-        if (Vector2Length(Vector2Subtract(ps->data[i].position, center)) > R) {
-            ps->data[i].position = Vector2Add(center,
+        if (Vector2Length(Vector2Subtract(((particle*)ps->data)[i].position, center)) > R) {
+            ((particle*)ps->data)[i].position = Vector2Add(center,
                 (Vector2){ rmviRandNormal(0, R*0.3f), rmviRandNormal(0, R*0.3f) }
             );
             continue;
@@ -174,7 +260,7 @@ void rasenganParticlesUpdate(ParticleSystem *ps, Vector2 center, float R) {
 
 void drawRasenganParticles(ParticleSystem *ps){
     for (int i = 0; i < ps->count; i++){
-        DrawCircleV(ps->data[i].position, 1.0f, (Color) {255, 255, 255, 235});
+        DrawCircleV(((particle*)ps->data)[i].position, 1.0f, (Color) {255, 255, 255, 235});
     }
 }
 
@@ -183,28 +269,28 @@ void fireSource(Vector2 position, float temperature, ParticleSystem *ps, int num
         if (ps->count >= ps->capacity)
             particleSystem_grow(ps);
         particle p = {
-            .position = Vector2Add(position, (Vector2){ rmviRandNormal(0,7), rmviRandNormal(0,3) }),
+            .position = Vector2Add(position, (Vector2){ rmviRandNormal(0,7), rmviRandNormal(0,15) }),
             .velocity = (Vector2){ rmviRandNormal(0,4), Clamp(rmviRandNormal(-0.25,1.5),-3,0.5) },
             .temperature = rmviRandNormal(temperature, 0.3 * temperature)
         };
-        ps->data[ps->count++] = p;
+        ((particle*)ps->data)[ps->count++] = p;
     }
 }
 
 void fireParticlesUpdate(ParticleSystem *ps,Vector2 center) {
     for (int i = 0; i < ps->count; ) {
-        ps->data[i].temperature -= rmviRandNormal(TEMPDECREASE,TEMPDECREASE/5);
-        if (ps->data[i].temperature < TEMPTRESHOLD) {
+        ((particle*)ps->data)[i].temperature -= rmviRandNormal(TEMPDECREASE,TEMPDECREASE/5);
+        if (((particle*)ps->data)[i].temperature < TEMPTRESHOLD) {
             // enlever particule : remplace par la dernière
-            ps->data[i] = ps->data[ps->count - 1];
+            ((particle*)ps->data)[i] = ((particle*)ps->data)[ps->count - 1];
             ps->count--;
             continue; // ne pas incrementer i, car on doit traiter le nouvel élément
         }
         // update normal
-        ps->data[i].velocity.y -= 0.02f;
-        ps->data[i].velocity.x += (center.x - ps->data[i].position.x) * 0.01f;
-        ps->data[i].position.x += ps->data[i].velocity.x;
-        ps->data[i].position.y += ps->data[i].velocity.y;
+        ((particle*)ps->data)[i].velocity.y -= 0.02f;
+        ((particle*)ps->data)[i].velocity.x += (center.x - ((particle*)ps->data)[i].position.x) * 0.01f;
+        ((particle*)ps->data)[i].position.x += ((particle*)ps->data)[i].velocity.x;
+        ((particle*)ps->data)[i].position.y += ((particle*)ps->data)[i].velocity.y;
         i++;
     }
 }
@@ -238,8 +324,8 @@ Color colorTemperatureToRGB(float kelvin, float alpha) {
 }
 void drawTemperatureParticles(ParticleSystem *ps){
     for (int i = 0; i < ps->count; i++){
-        DrawCircleV(ps->data[i].position, 1.0f, colorTemperatureToRGB(ps->data[i].temperature,255));
-        DrawLineEx(ps->data[i].position, Vector2Subtract(ps->data[i].position, Vector2Scale(ps->data[i].velocity, Clamp(rmviRandNormal(1,1),0,3))), 0.5f, colorTemperatureToRGB(ps->data[i].temperature,200));
+        DrawCircleV(((particle*)ps->data)[i].position, 1.0f, colorTemperatureToRGB(((particle*)ps->data)[i].temperature,255));
+        DrawLineEx(((particle*)ps->data)[i].position, Vector2Subtract(((particle*)ps->data)[i].position, Vector2Scale(((particle*)ps->data)[i].velocity, Clamp(rmviRandNormal(1,1),0,3))), 0.5f, colorTemperatureToRGB(((particle*)ps->data)[i].temperature,200));
     }
 }
 
@@ -322,6 +408,8 @@ void addImageToffmpeg(void *ffmpeg) {
 }
 
 
+
+
 int bm_visual_main(void)
 {   
     Timescale ts = { 1764, TSSCALE, TSSTEP };
@@ -331,8 +419,8 @@ int bm_visual_main(void)
     Anime2 *grec = rmviAnime2FromJSON(jsonData);
     Vector2 piloneGrecPos = {GetScreenWidth()/4.0f, GetScreenHeight()/2.0f};
     printf("Anime2 loaded with %d contours.\n", grec->ncontours);
-    ParticleSystem fireps = initParticleSystem(1000);
-    ParticleSystem rasenganps = initParticleSystem(200);
+    ParticleSystem fireps = initParticleSystem(3000, sizeof(particle));
+    ParticleSystem rasenganps = initParticleSystem(200,sizeof(particle));
     Vector2 firePosition = {GetScreenWidth()/2.0f, GetScreenHeight()/2.0f};
     Vector2 rasenganPosition = {3*GetScreenWidth()/4.0f, GetScreenHeight()/2.0f};
     rasenganSource(rasenganPosition, &rasenganps, 800,rasenganRadius);
@@ -340,10 +428,21 @@ int bm_visual_main(void)
     Vector2 briquePositions[7];
     float scaleBrique = 0.15f;
     Vector2 briqueInitialPos = {GetScreenWidth()/2.0f - (briquesTexture.width/3.0f)*scaleBrique, GetScreenHeight()/4.0f - (briquesTexture.height/3.0f)*scaleBrique};
-    
     Rectangle briques[7];
     initBriques(briquesTexture, briques);
     initBriquePositions(briquePositions, briqueInitialPos, briques, scaleBrique);
+
+    ParticleSystem psl = initParticleSystem(200,sizeof(lParticle));
+    liquidSource((Rectangle) {
+        GetScreenWidth()/2.0f - 100,
+        GetScreenHeight()/2.0f - 100,
+        200,
+        100},
+        20, &psl);
+    Vector2 a = {0,0};
+    Vector2 postext = {200,400};
+    smoothingRadius = 80;
+    float density;
     int framecount=0;
     while (!WindowShouldClose())
     {   
@@ -356,26 +455,32 @@ int bm_visual_main(void)
         BeginTextureMode(screen);
             ClearBackground(BG);
             drawTimescale(ts, 3*GetScreenHeight()/4.0f, DRAWCOLOR);
+            //density = calculateDensity(CENTER,&psl);
+            //drawlParticle(&psl);
+            //rmviWriteAnimText(TextFormat("la densité est de %.3f",density), postext, 20, WHITE, 0,framecount);
+
+            // ------- Plus simple que de tout commenter
+            if(true){
+                    // ----------- BRIQUES -------------
+                drawBriques(briques, briquesTexture, briquePositions, 0.15f, framecount);
+
+                // ----------- FEU -------------
+                fireSource(firePosition, TEMPERATURE, &fireps, 50);
+                fireParticlesUpdate(&fireps,firePosition);
+                drawTemperatureParticles(&fireps);
+
+                // ----------- RASENGAN -------------
+                DrawRasenganCore(rasenganPosition, rasenganRadius,0);
+                rasenganParticlesUpdate(&rasenganps,rasenganPosition, 0.97*rasenganRadius);
+                drawRasenganParticles(&rasenganps);
+
+                // ----------- PILONE GREC -------------
+                rmvidrawAnime2(grec, piloneGrecPos, 1.0f, WHITE, true);
+
+                DrawFPS(10, 10);
+
+            }
             
-            /*
-            // ----------- BRIQUES -------------
-            drawBriques(briques, briquesTexture, briquePositions, 0.15f, framecount);
-
-            // ----------- FEU -------------
-            fireSource(firePosition, TEMPERATURE, &fireps, 50);
-            fireParticlesUpdate(&fireps,firePosition);
-            drawTemperatureParticles(&fireps);
-
-            // ----------- RASENGAN -------------
-            DrawRasenganCore(rasenganPosition, rasenganRadius,0);
-            rasenganParticlesUpdate(&rasenganps,rasenganPosition, 0.97*rasenganRadius);
-            drawRasenganParticles(&rasenganps);
-
-            // ----------- PILONE GREC -------------
-            rmvidrawAnime2(grec, piloneGrecPos, 1.0f, WHITE, true);
-            
-            DrawFPS(10, 10);
-            */
         EndTextureMode();
         rmviDraw();
         if (RECORDING) addImageToffmpeg(ffmpeg);

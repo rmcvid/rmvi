@@ -7,7 +7,6 @@
 #define PLANET_SCALE 10.0f // facteur d'échelle pour les planètes
 #define UA2PIXEL 200.0f // facteur d'échelle pour les distances
 #define UA2PIXEL_FAR 130.0f
-#define CENTER (Vector2) {(float)GetScreenWidth()/2.0f, (float)GetScreenHeight()/2.0f} // centre de l'écran
 
 #define FRAME2SEC 100000                 // conversion frame en seconde
 #define MEMORY 1000                     // C'est dans des for ca rent le truc pas du tout efficace point qu'on conserve dans la mémoire pour desinner les orbites
@@ -96,7 +95,7 @@ rmviDynamic2D **rmviPlanet2Dynamic(rmviPlanet **planets, int n) {
     for (int i = 0; i < n; i++) {featurePtrs[i] = &planets[i]->features; }
     return featurePtrs;
 }
-
+// ca c'est éclaté je pense de vider à la mémoir à chaque appel
 void rmviUpdateGravity(rmviPlanet **planets, int n) {
     rmviDynamic2D **featurePtrs = rmviPlanet2Dynamic(planets, n);
     if (!featurePtrs) return;
@@ -108,13 +107,13 @@ Vector2 rmviVectorCrossAngle(float norm, float angle){
 }
 
 void initialisePlanets(){
-    sun = rmviGetPlanet(VECTOR20, 1.989e30, VECTOR20, VECTOR20, LoadTexture("video/fourier/Image/sun.jpg"), PLANET_SCALE*log10(696342));
-    mercury = rmviGetPlanet(rmviVectorCrossAngle(69.816e9,-25.49074), 3.285e23,rmviVectorCrossAngle(38.86e3, 90 - 25.49074), VECTOR20, LoadTexture("video/fourier/Image/mercury.jpg"), PLANET_SCALE*log10(2439));
-    venus = rmviGetPlanet(rmviVectorCrossAngle(108.943e9,28.58579), 4.867e24, rmviVectorCrossAngle(34.789e3,90 +28.58579), VECTOR20, LoadTexture("video/fourier/Image/venus.jpg"), PLANET_SCALE*log10(60518));
-    earth = rmviGetPlanet(rmviVectorCrossAngle(152e9,0.0), 5.972e24,rmviVectorCrossAngle(29.291e3,90), VECTOR20, LoadTexture("video/fourier/Image/earth.jpg"), PLANET_SCALE*log10(63567));
-    mars = rmviGetPlanet(rmviVectorCrossAngle(249.230e9,-126.90635), 6.39e23, rmviVectorCrossAngle(21.975e3,90 + -126.90635), VECTOR20, LoadTexture("video/fourier/Image/mars.jpg"), PLANET_SCALE*log10(33762));
-    jupiter = rmviGetPlanet(rmviVectorCrossAngle(778e9,-88.19334), 1.898e27, rmviVectorCrossAngle(12.448e3,90 +-88.19334), VECTOR20, LoadTexture("video/fourier/Image/jupyter.jpg"), PLANET_SCALE*log10(69911));
-    saturn = rmviGetPlanet(rmviVectorCrossAngle(1503e9,-10.51525), 5.683e26, rmviVectorCrossAngle(9.141e3,90 -10.51525), VECTOR20, LoadTexture("video/fourier/Image/saturn.jpg"), PLANET_SCALE*log10(58232));
+    sun = rmviGetPlanet(VECTOR20, 1.989e30, VECTOR20, VECTOR20, LoadTexture(IMAGE_PATH"sun.jpg"), PLANET_SCALE*log10(696342));
+    mercury = rmviGetPlanet(rmviVectorCrossAngle(69.816e9,-25.49074), 3.285e23,rmviVectorCrossAngle(38.86e3, 90 - 25.49074), VECTOR20, LoadTexture(IMAGE_PATH"mercury.jpg"), PLANET_SCALE*log10(2439));
+    venus = rmviGetPlanet(rmviVectorCrossAngle(108.943e9,28.58579), 4.867e24, rmviVectorCrossAngle(34.789e3,90 +28.58579), VECTOR20, LoadTexture(IMAGE_PATH"venus.jpg"), PLANET_SCALE*log10(60518));
+    earth = rmviGetPlanet(rmviVectorCrossAngle(152e9,0.0), 5.972e24,rmviVectorCrossAngle(29.291e3,90), VECTOR20, LoadTexture(IMAGE_PATH"earth.jpg"), PLANET_SCALE*log10(63567));
+    mars = rmviGetPlanet(rmviVectorCrossAngle(249.230e9,-126.90635), 6.39e23, rmviVectorCrossAngle(21.975e3,90 + -126.90635), VECTOR20, LoadTexture(IMAGE_PATH"mars.jpg"), PLANET_SCALE*log10(33762));
+    jupiter = rmviGetPlanet(rmviVectorCrossAngle(778e9,-88.19334), 1.898e27, rmviVectorCrossAngle(12.448e3,90 +-88.19334), VECTOR20, LoadTexture(IMAGE_PATH"jupyter.jpg"), PLANET_SCALE*log10(69911));
+    saturn = rmviGetPlanet(rmviVectorCrossAngle(1503e9,-10.51525), 5.683e26, rmviVectorCrossAngle(9.141e3,90 -10.51525), VECTOR20, LoadTexture(IMAGE_PATH"saturn.jpg"), PLANET_SCALE*log10(58232));
     saturn.visual.height = saturn.visual.width/180*95;
 }
 
@@ -156,9 +155,6 @@ void rmviDrawDashFast(rmviDash *dashPlanet, Vector2 center, Color color, float s
 
     rlEnd();
 }
-/*void rmviDrawdashList(rmviDash **dashList, Vector2 center, int n){
-    for(int i=0; i<n; i++){rmviDrawDash(dashList[i], center);}
-}*/
 void slideOne(void){
     if(reset_dash && (int)countFrame%SPACE_DASH == 0){
         for(int i=0; i < sizeof(planets) / sizeof(planets[0]); i++){
@@ -242,14 +238,20 @@ int bm_visual_main(void)
     centerSpeed = VECTOR20;
     int timeFourier = 10;
     Vector2 *figure = malloc(FPS * timeFourier * sizeof(Vector2));
-    //rmviPointArray points = read_csv_points("C:\\Users\\ryanm\\Documents\\Rmvi\\animation\\video\\fourier\\Image\\points_fourier.csv");
-    rmviPointArray points = read_csv_points("C:\\Users\\ryanm\\Documents\\Rmvi\\animation\\video\\fourier\\Image\\ryan_jupyter.csv");
+    //rmviPointArray points = read_csv_points(IMAGE_PATH"points_fourier.csv");
+    rmviPointArray points = read_csv_points(IMAGE_PATH"ryan_jupyter.csv");
     FourierCoeff *coeff = testFFT(points);
-    const char *t1 = "Bonjour Louis! //Ce cher ff";
-    const char *t2 = "Te dis bah";
+    //rmviPlanet3D mars3D = rmviGetPlanet3D();
+
+    // ecrire du texte
+    const char *t1 = "";
+    const char *t2 = "";
     float w1 = rmviCalcTextWidth(t1, mathFont,60,60/15);
     float w2 = rmviCalcTextWidth(t2, mathFont,60,60/15);
-
+    Token tokens[256];
+    int tokenCount = rmviTokenizeLatex("j'écris ceci a^{etceci + ca} // /Delta t puis on continue avec cela /delta /phi /psi // /frac{a}{b} aprés la frac", tokens, 256);
+    RenderBox boxes[256];
+    int boxCount = rmviBuildRenderBoxes(tokens, tokenCount, boxes, mathFont, 32, 1);
     while (!WindowShouldClose())
     {
         BeginTextureMode(screen);
@@ -259,16 +261,9 @@ int bm_visual_main(void)
                 space_count ++;
                 countFrame = 0;
             }
+            rmviDrawRenderBoxes( boxes, boxCount, (Vector2){100, 200}, mathFont, 32, 1, WHITE);
             if(IsKeyPressed(KEY_R)) reset_dash = true;
-            slideOne();
-            if(space_count == 0)  rmviWriteAnimText(t1 ,(Vector2) {CENTER.x - w1/2, CENTER.y} ,60, WHITE,0,countFrame);
-            /*else if (space_count == 1){
-                if (countFrame < FPS*timeFourier) rmviDrawFourier(coeff, NFOURIER, CENTER, 10.00f, WHITE, 2.0f * PI * (float)countFrame/((float)FPS * timeFourier * (coeff[1].freq)), countFrame < FPS*timeFourier ? &figure[(int) countFrame] : NULL);
-                rmviDrawFourierFigure(countFrame, figure, timeFourier, FPS, WHITE);
-            }*/
-            else if (space_count == 2) rmviWriteAnimText(t2 ,(Vector2) {CENTER.x - w2/2, CENTER.y},60, WHITE,0, countFrame);
-            else if (space_count > 2) slideOne();
-            //DrawText(rec.isRecording ? "Recording..." : "Idle", 20, 20, 20, WHITE);
+            //slideOne();
             DrawFPS(10, 10);
         EndTextureMode();
         rmviDraw();

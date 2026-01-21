@@ -1,0 +1,134 @@
+Bon et si on se lancait dans la production de vidéo sérieuse ?
+
+Evidemment on va pas faire comme tout le monde.
+
+On ne va pas utiliser un logiciel de montage ...
+
+On va le construire.
+
+Ok pour ça il faut commencer par définir l'environnement de code qu'on va utiliser.
+Ca se veut sérieux donc il faut qu'il soit capable de faire tourner des simulations ambitieuses en temps réèl.
+Ce sera utile lorsqu'on simulera des réacteurs nucléaires, des marchés financiers, ...
+Le /loadImage{C:\Users\ryanm\Documents\Rmvi\animation\video\solarSystem\Image\c.png}{100}{100} C semble etre une bonne idée.
+/footnote{Oui oui tout ce que vous voyez et allez voir a été codé en C. Même ca ^^}
+
+Ok une fois qu'on a l'environnement faut dévelloper tout l'affichage.
+On doit maintenant matérialiser le code en affichage,
+Pour ca on utilise la librairie Raylib /loadImage{C:\Users\ryanm\Documents\Rmvi\animation\extern\raylib\logo\raylib_180x180.png} 
+Elle permet notamment d'utiliser la carte graphique(GPU) tout en apportant un cadre simple.
+
+Les vidéos se doivent d'avoir un audio digne de ce nom.
+On utilise miniaudio.h, une librairie très commune.
+C'est simple d'implémentention et permet une panoplie de traitement audio.
+ok on test
+
+1 2 3 test.
+
+1 2 3 4. %lancement de musique
+
+
+Pour l'image c'est simple. Une vidéo c'est un empilement de photo.
+On enregistres 50 images par seconde qu'on empile.
+On superpose au son et bam pas besoin de logiciel de montage.
+
+Vu que c'est pour des vidéos sérieuses. 
+On veut pouvoir écrire et même écrire des maths.
+Pour ca le mieux c'est d'utiliser latex. 
+Ce coup ci y'a pas de librairie simple qui permet d'integrer latex à tout mon montage.
+Pour pas se prendre la tête, on va coder un pseudo latex (psLatex).
+
+Pour psLatex et vu qu'on veut pas se prendre la tête, on va remplacer les \ par des / .
+Il faut ecrire un pseudo compilateur qui lit le texte et determine à l'avance tout ce qui va suivre.
+A savoir la taille du texte à écrire, les fonctions utilisées etc etc. 
+Etant donnée qu'on est en C et que les textes seront relativement court on peut se permettre d'utiliser des for et d'être un peu bourrin.
+Au pire on corrigera ca plus tard.
+On recode uniquement les fonctions dont on a besoin et on améliorera le fichier en continu.
+
+Maintenant je peux ecrire des équations voire même des théorèmes
+F(x) = /int_a^x f(t) dt
+
+Il faut que les vidéos soient ludiques aussi donc on va rajouter des animations
+/begin(itemize)
+/item autant pour l'écriture
+/item que pour les affichages graphiques et autre
+/end(itemize)
+
+Pour l'affichage ce serait bien de pouvoir dessiner en direct.
+Réfléchisson un instant ...
+Comment le faire avec la manière ?
+mhhhh bahh Fourier ?
+
+On peut faire un test ?
+/drawfourier(ryan)
+
+Ok c'est cannon mais passer d'une photo à une courbe fermée c'est pas si simple. 
+To do automatiser le passage d'une photo à une courbe fermée
+
+Maintenant qu'on a le set up, il faudrait du contenu.
+
+Commencons simplement avec quelques chose de cannon.
+Le systéme solaire.
+
+Vu qu'on veut quelque chose de simple on va se limiter aux équations de Newton. 
+Flemme de réécrire les équations de la RG ajd.
+
+La forces d'attraction subit par l'objet i c'est la somme de toutes les forces d'attraction qu'il subit.
+/begin(equation)
+F_i = /sum_{j/neq i} /frac{m_i m_j G}{r^2_{ij}}
+/end(equation)
+On continue notre modèle simple en resolvant la position de façon naive
+/begin(equation)
+/bar{F}_i(t) = m_i /bar{a}_i(t)
+/bar{v}_i(t + /Delta t) = /bar{v}_i(t) + /bar{a}_i(t) /Delta t 
+/bar{p}_i(t + /Delta t) = /bar{p}_i(t) + /bar{v}_i(t) /Delta t + /bar{a}_i(t) /frac{/Delta t^2}{2}
+/end(equation)
+
+Une fois que le modèle est construit il faut aller récolté les informations sur les planètes qu'on va trier dans un json.
+On se limite aux planètes jusque saturne dans un premier temps car ce sont les seules qui sont visible à l'oeil nu.
+On ajoute des textures un peu canon histoire que ce soit beau.
+
+# on peut mettre quelques photo canon
+
+Notre simulation physique se repose sur une vision deterministe défendue par exemple par le démon de Laplace.
+En paraphrasé il dit :
+"Si on disposes de toutes les caractéristiques de l'univers à un moment t on peut calculer précisément toutes ses caractéristiques à tout autre moments"
+Petite digression au passage: 
+    - Le premier problème en pratique est qu'il est impossible de connaitre toutes les caractéristiques de l'univers avec précision
+    on aurait des erreurs de mesures qui, via la chaos mèneraient à des prédictions érronées. Mais cette contradiction est de l'ordre du pratique.
+    - Si on change de vision et qu'on imagine qu'il est possible de tout mesurer avec précision. Bah la c'est à priori la mécanique quantique qui vient poser probléme
+    On serait seulement capable de donner une probabilité sur tous les états futurs mais le débat n'est pas tranché. Le contraire est défendue par une vision qu'on appelle le Superdétermnisme.
+
+
+Bon en tout cas ici tout est déterministe et on utilise des conditions initiales plausibles qui ménèront à un modèle plausible.
+Ainsi on place toutes les planètes à l'aphélie, soit le point le plus éloigné du soleil et où leurs vitesses est minimales.
+
+/loadvideo{C:\Users\ryanm\Documents\Rmvi\animation\video\solarSystem\Image\decompte}{decompte}
+
+# simulation du système solaire
+ok pour le soleil plutot que d'utiliser une texture on va utiliser un shader ca donnera du dynamisme.
+on ajotue les rotation des planètes, les anneaux de saturne.
+On modélise le soleil comme une lampe on ajoute les ombres et puis tant qu'à faire la lumière généré par les humains sur terre.
+mhh Un petit fond galactique et bam
+
+
+Les choix des echelles est quelques chose de finalement peu évident car elle dépend de ce qu'on veut montrer.
+Aller par exemple on peut montrer à quelle point la terre est petite. Voici donc une echelle linéaire.
+Elle image bien que le soleil réprésente 99% de la masse du système solaire et le reste est majoritairement au sein de Jupiter.
+
+On peut terminer sur une précision assez mal compris du public.
+Le problème à trois corps.
+Plus largement le problème à N corps c'est quand un nombre N de corps s'attirent ou se repoussent. 
+On dit qu'ils sont en interraction. L'idée est de formuler la position exacte de ces N corps pour tout temps t.
+Obtenir une formule ou il suffit de remplacer t est très rarement faisable. C'est ce qu'on appelle une solution explicite.
+Cependant on peut formuler des modèles approximatif qui vont permettre d'obtenir une idée plus ou moins précise de ces position.
+Dans le cas présent on calcule plein de positions intermédiaires et au plus on en calcul on mieux sera la précision.
+
+Donc ici avec notre problème à 7 corps, on ne dispose pas d'une solution explicite sur la position futur des planètes
+
+
+Bon ben je vous dis à bientot pour la prochaine vidéo sérieuse ?
+
+
+
+
+

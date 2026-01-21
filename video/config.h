@@ -10,7 +10,7 @@
 #include "text2Latex.h"
 
 #define RECORDING 0 // 1 to record video, 0 to not record
-#define AUDIO_RECORDING 0 // 1 to record audio, 0 to not record
+#define AUDIO_RECORDING 1 // 1 to record audio, 0 to not record
 
 #define FPS 50
 #define WIDTH 1920 //
@@ -34,6 +34,7 @@ void *ffmpeg = NULL;
 #define RATIODEFAULT 4.5      // ratio entre la hauteur du rectangle et la hauteur du texte
 #define SAFE_RATIO(num, den) ((den) != 0 ? (float)(num) / (float)(den) : 0.0f) // affiche 0 quand diviser par zero
 #define VECTOR20 (Vector2) {0.0f, 0.0f} // vecteur nul
+#define CENTER (Vector2){GetScreenWidth()/2,GetScreenHeight()/2}
 RenderTexture2D screen;
 RecordDevice rec;
 

@@ -8,6 +8,7 @@
 #include "fft_wrapper.h"
 #include "cJSON.h"
 
+
 typedef struct {
     Rectangle outerRect;
     Rectangle innerRect;
@@ -62,6 +63,14 @@ typedef struct rmviDynamic2D{
     Vector2 force;
 } rmviDynamic2D;
 
+typedef struct rmviDynamic3D{
+    Vector3 position;
+    double mass;
+    Vector3 velocity;
+    Vector3 force;
+    float radius;
+} rmviDynamic3D;
+
 typedef struct rmviVisual{
     Texture2D texture;
     float width;
@@ -72,6 +81,41 @@ typedef struct rmviPlanet{
     rmviDynamic2D features ;
     rmviVisual visual;
 } rmviPlanet;
+
+typedef struct rmviModel{
+    Model model;
+}rmviModel;
+
+typedef struct Light {
+    Vector3 position;
+    Vector3 ambient;
+    Vector3 diffuse;
+    Vector3 specular;
+} Light;
+
+typedef struct lightLoc {
+    unsigned int position;
+    unsigned int ambient;
+    unsigned int diffuse;
+    unsigned int specular;
+} lightLoc;
+
+typedef struct rmviLocUniform{
+    unsigned int viewLoc;
+    unsigned int projLoc;
+    unsigned int modelLoc;
+    unsigned int timeLoc;
+    lightLoc lightLoc;
+    unsigned int viewPosLoc;
+}rmviLocUniform;
+
+typedef struct rmviPlanet3D{
+    rmviDynamic3D features;
+    Shader shader;
+    Model model;
+    rmviLocUniform locUniform;
+}rmviPlanet3D;
+
 
 typedef struct rmviDash{
     Vector2 position;
@@ -93,6 +137,18 @@ typedef struct {
     Contour2 *contours;  // tableau de contours
     int ncontours;       // nombre de contours
 } Anime2;
+
+typedef struct {
+    Texture2D *frames;
+    int frameCount;
+    int current;
+    float fps;
+    float timer;
+    Music audio;
+    bool hasAudio;
+    bool started;
+    bool finished;
+} Video;
 
 
 
@@ -168,6 +224,10 @@ rmviPlanet rmviGetPlanet(Vector2 position, float mass, Vector2 velocity, Vector2
 void rmviGravityRepulsion(rmviDynamic2D **features, int n);
 
 
+// ----------------------------- DYNAMICS 2D AND PLANETS -----------------------------
+rmviPlanet3D rmviGetPlanet3D(Vector3 position, float mass, Vector3 velocity, Vector3 force, const char* modelPath);
+void rmviGravityRepulsion3D(rmviDynamic3D **features, int n);
+
 // ----------------------------- Fourrier -----------------------------
 void rmviDrawFourier(FourierCoeff *coeffs, int n, Vector2 origin, float scale, Color color, float time, Vector2 *figure);  // dessine les cercles et le tracé
 void rmviDrawFourierFigure(float countFrame, Vector2 *figure, int timeFourier, int FPS, Color color);
@@ -177,4 +237,9 @@ char* rmviReadFile(const char *filename);
 Anime2* rmviAnime2FromJSON(const char *jsonStr);
 void rmviAnime2Free(Anime2 *anime);
 void rmvidrawAnime2(Anime2 *anime, Vector2 position, float scale, Color color, bool invertY );
+
+
+void mp4ToTexture(const char *pathFile, const char *outDir, const char *name);
+Video LoadVideo(const char *mp4Path, const char *outDir, const char *name, float fallbackFPS);
+void PlayVideo(Video *video);
 #endif // VISUAL_H

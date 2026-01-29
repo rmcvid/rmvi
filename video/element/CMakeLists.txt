@@ -11,7 +11,7 @@ target_include_directories(element
 )
 target_compile_definitions(element
   PRIVATE
-    FONT_PATH=\"${CMAKE_SOURCE_DIR}/extern/police/latinmodern-math-1959/otf/latinmodern-math.otf\"
+    FONT_PATH=\"${CMAKE_SOURCE_DIR}/extern/police/jsMath-cmsy10.ttf\" #latinmodern-math-1959/otf/latinmodern-math.otf\"
     IMAGE_PATH=\"${CMAKE_CURRENT_SOURCE_DIR}/Image/\"
 )
 

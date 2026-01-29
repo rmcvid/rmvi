@@ -11,7 +11,7 @@ target_include_directories(fourier
 )
 target_compile_definitions(fourier
   PRIVATE
-    FONT_PATH=\"${CMAKE_SOURCE_DIR}/extern/police/latinmodern-math-1959/otf/latinmodern-math.otf\"
+    FONT_PATH=\"${CMAKE_SOURCE_DIR}/extern/police/STIXTwoMath-Regular.ttf\"
     HERE_PATH=\"${CMAKE_CURRENT_SOURCE_DIR}/\"
     IMAGE_PATH=\"${CMAKE_CURRENT_SOURCE_DIR}/Image/\"
 )

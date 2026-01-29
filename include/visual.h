@@ -224,7 +224,7 @@ rmviPlanet rmviGetPlanet(Vector2 position, float mass, Vector2 velocity, Vector2
 void rmviGravityRepulsion(rmviDynamic2D **features, int n);
 
 
-// ----------------------------- DYNAMICS 2D AND PLANETS -----------------------------
+// ----------------------------- DYNAMICS 3D AND PLANETS -----------------------------
 rmviPlanet3D rmviGetPlanet3D(Vector3 position, float mass, Vector3 velocity, Vector3 force, const char* modelPath);
 void rmviGravityRepulsion3D(rmviDynamic3D **features, int n);
 

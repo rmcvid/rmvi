@@ -10,6 +10,8 @@ typedef enum {
     TOKEN_OPERATOR,   // + - * / =
     TOKEN_LBRACE,     // {
     TOKEN_RBRACE,     // }
+    TOKEN_LBRACKET,
+    TOKEN_RBRACKET,
     TOKEN_SUB,
     TOKEN_NEXTLINE
 } TokenType;
@@ -32,6 +34,7 @@ typedef enum {
     FRAC,     
     BEGIN_EQUATION,    
     BEGIN_ITEMIZE,
+    LOAD_IMAGE,
     OTHER
 } Env;
 
@@ -41,16 +44,40 @@ typedef struct{
     bool addSpace;
 } Command;
 
+typedef enum{ 
+    FIT_NONE,
+    FIT_RENDER ,     // fit the renderbox to the dimension of the image // DEFAULT if something
+    FIT_NORENDER,     // Renderbox has not the dimension of the image. 
+    FIT_POSITION
+} ImageFit;
+
+typedef struct {
+    float scale;   // 1.0
+    float width;   // -1 = unset
+    float height;  // -1 = unset
+    float posX;
+    float posY;
+    float shiftX;
+    float shiftY;
+    ImageFit fit;  // FIT_NONE
+} ImgOpts;
+
 typedef struct RenderBox {
     Vector2 pos;
+    bool isPositionned; // has a fix position
     float width;
     float height;
     Token *token;
     float size;
     Command command; 
-    struct RenderBox *items;    // enfants linéaires (exposant, indice)
+    struct RenderBox *items;
     int itemCount;
-    bool line;
+    Texture2D *texPtr;
+    bool isLine;
+    bool isImage;
+    float imgScale;       
+    float imgW, imgH;
+    ImageFit fit;
 } RenderBox;
 
 
@@ -88,4 +115,5 @@ int rmviBuildRenderBoxes(Token *tokens, int tokenCount, RenderBox *boxes, Font f
 void rmviDrawRenderBoxes( RenderBox *boxes, int count, Vector2 basePos, Font font, float fontSize, float spacing, Color color);
 RenderBox rmviBuildCommandBox(Token *tokens,int tokenCount,int *index,Font font,float fontSize,float spacing);
 RenderBox rmviBuildSubBox(Token *tokens,int tokenCount,int *index,Font font,float fontSize,float spacing);
+char* rmviReadSymbolText(Token *tokens, int tokenCount, int *index,char openChar, char closeChar);
 #endif // TEXT2LATEX_H

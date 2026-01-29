@@ -6,10 +6,11 @@ Font mathFont;
 
 #define MAX_CODEPOINTS 512
 #define INTERLIGNE_ITEM 1.4f // interligne pour les items
-#define INTERLIGNE 1.2f     // Line spacing ratio with \n
+#define INTERLIGNE 1.3f     // Line spacing ratio with \n
 #define RATIO_INDEX 0.6f    // Size ratio for index text such H_3
 #define RATIO_INDEX_DOWN 0.6f // Ratio for subscript positioning
 #define RATIO_INDEX_UP 0.15f   // Ratio for superscript positioning
+#define RATIO_SIZE_FRAC 0.8f
 #define RATIO_INDENT 2.0f      // Ratio for item indentation
 #define RATIO_SPACE 15.0f
 #define SIZE_TEXT 40.0f
@@ -41,12 +42,20 @@ typedef struct {
     int miseEnPage;
 } State;
 
+typedef enum{
+    CLASSIC,
+    DOLLAR,
+    EQUATION,
+    SUB
+} Style;
+
 State state = {
     .sizeText = SIZE_TEXT,
     .spacing = SIZE_SPACING,
     .interline = INTERLIGNE,
-    .miseEnPage = 0
+    .miseEnPage = CLASSIC
 };
+
 static Token IntToken        = { TOKEN_SYMBOL, "∫" };
 static Token deltaToken      = { TOKEN_SYMBOL, "δ" };
 static Token DeltaToken      = { TOKEN_SYMBOL, "Δ" };
@@ -71,11 +80,42 @@ static Token leqToken        = { TOKEN_SYMBOL, "≤" };
 static Token geqToken        = { TOKEN_SYMBOL, "≥" };
 static Token infinityToken   = { TOKEN_SYMBOL, "∞" };
 
+typedef struct {
+    char path[512];
+    Texture2D tex;
+    bool used;
+} TextureList;
+
+static TextureList g_texCache[128] = {0};
+static int g_texCacheCount = 0;
+
+static Texture2D *rmviGetTexturePtrCached(const char *path){
+    for (int i = 0; i < g_texCacheCount; i++) {
+        if (g_texCache[i].used && strcmp(g_texCache[i].path, path) == 0) {
+            return &g_texCache[i].tex;
+        }
+    }
+    if (g_texCacheCount >= 128) {
+        printf("Texture cache full, cannot load: %s\n", path);
+        return NULL;
+    }
+    TextureList *e = &g_texCache[g_texCacheCount++];
+    e->used = true;
+    strncpy(e->path, path, sizeof(e->path) - 1);
+    e->path[sizeof(e->path) - 1] = '\0';
+    e->tex = LoadTexture(path);
+    // Optionnel: check
+    if (e->tex.id == 0) {
+        printf("Failed to load texture: %s\n", path);
+        // tu peux laisser quand même, ou marquer used=false
+    }
+    return &e->tex;
+}
 
 
 
 static int isOperator(char c) {
-    return (c == '+' || c == '-' || c == '*' || c == '=');
+    return (c == '+' || c == '-' || c == '*' || c == '='|| c == '.' || c ==':' || c == ',' );
 }
 static int isAlphaNum(unsigned char c)
 {
@@ -95,8 +135,7 @@ static int isAlphaNum(unsigned char c)
 int rmviTokenizeLatex(const char *latex, Token *tokens, int maxTokens){
     int i = 0;
     int count = 0;
-    while (latex[i] && count < maxTokens)
-    {
+    while (latex[i] && count < maxTokens){
         char c = latex[i];
         // Ignore spaces
         if (c == ' ') {
@@ -133,7 +172,16 @@ int rmviTokenizeLatex(const char *latex, Token *tokens, int maxTokens){
             i++;
             continue;
         }
-
+        if(c == '['){
+            tokens[count++] = (Token){ TOKEN_RBRACKET, "[" };
+            i++;
+            continue;
+        }
+        if(c == ']'){
+            tokens[count++] = (Token){ TOKEN_RBRACKET, "]" };
+            i++;
+            continue;
+        }
         if (c == '^'){
             tokens[count++] = (Token) { TOKEN_SUB, '^'};
             i++;
@@ -144,7 +192,6 @@ int rmviTokenizeLatex(const char *latex, Token *tokens, int maxTokens){
             i++;
             continue;
         }
-        // Operator
         if (isOperator(c)) {
             tokens[count].type = TOKEN_OPERATOR;
             tokens[count].text[0] = c;
@@ -153,7 +200,6 @@ int rmviTokenizeLatex(const char *latex, Token *tokens, int maxTokens){
             i++;
             continue;
         }
-        // Symbol (letters or numbers)
         if (isAlphaNum(c)) {
             int j = 0;
             tokens[count].type = TOKEN_SYMBOL;
@@ -171,12 +217,15 @@ int rmviTokenizeLatex(const char *latex, Token *tokens, int maxTokens){
 }
 Command getCommand(Token *token){
     Command command = {0};
+    // command bool is addspace or not
     if (strcmp(token->text, "/frac") == 0)
         command = (Command){ FRAC, 2, false };
     else if (strcmp(token->text, "/begin(itemize)") == 0)
         command = (Command){ BEGIN_ITEMIZE, 0, true };
     else if (strcmp(token->text, "/begin(equation)") == 0)
         command = (Command){ BEGIN_EQUATION, 0, true };
+    else if (strcmp(token->text, "/loadimage") == 0 || strcmp(token->text, "/loadImage") == 0)
+        command = (Command){ LOAD_IMAGE, 0, true };
     else
         command = (Command){ OTHER, 0, true };
     return command;
@@ -196,6 +245,160 @@ Vector2 rmviMeasureToken(Token *token, Font font, float fontSize, float spacing,
     return size;
 }
 
+// trim retire les espace du text
+static char *rmviTrim(char *s){
+    while (*s == ' ' || *s == '\t') s++;
+    char *end = s + strlen(s) - 1;
+    while (end > s && (*end == ' ' || *end == '\t')) {
+        *end = '\0';
+        end--;
+    }
+    return s;
+}
+
+static ImgOpts rmviParseImgOpts(const char *s){
+    ImgOpts o = {0};
+    o.scale = 1.0f;
+    o.width = -1.0f;
+    o.height = -1.0f;
+    o.posX = -1;
+    o.posY = -1;
+    o.fit = FIT_RENDER;
+    if (!s || !s[0]) return o;
+    char buf[512];
+    strncpy(buf, s, sizeof(buf)-1);
+    buf[sizeof(buf)-1] = '\0';
+    for (char *tok = strtok(buf, ","); tok; tok = strtok(NULL, ",")) {
+        // trim espaces
+        while (*tok == ' ') tok++;
+        char *eq = strchr(tok, '=');
+        if (!eq) continue;
+        *eq = '\0';
+        char *key = rmviTrim(tok);
+        char *val = rmviTrim(eq + 1);
+        if (strcmp(key, "scale") == 0) o.scale = (float)atof(val);
+        else if (strcmp(key, "width") == 0) o.width = (float)atof(val);
+        else if (strcmp(key, "height") == 0) o.height = (float)atof(val);
+        if (strcmp(key, "posX") == 0){
+            o.posX = (float)atof(val);
+            o.fit = FIT_POSITION;
+        }        
+        if (strcmp(key, "posY") == 0){
+            o.posY = (float)atof(val);
+            o.fit = FIT_POSITION;
+        }
+        if (strcmp(key, "shiftX") == 0) o.shiftX = (float)atof(val);        
+        if (strcmp(key, "shiftY") == 0) o.shiftY = (float)atof(val);
+        if (strcmp(key, "fit") == 0) {
+            if (strcmp(val, "noRender") == 0 && o.fit != FIT_POSITION) o.fit = FIT_NORENDER;
+        }
+    }
+    return o;
+}
+
+// to do implémenter les shifts
+void rmviBuildImageOpt(RenderBox *box, ImgOpts imgOpts){
+    if(!box ) return;
+    box->isImage = true;
+    if (imgOpts.scale  <= 0.0f) imgOpts.scale = 1.0f;
+    float tw = (float)box->texPtr->width;
+    float th = (float)box->texPtr->height;
+    if (imgOpts.width > 0.0f && imgOpts.height > 0.0f){
+        box->imgW = imgOpts.width ;
+        box->imgH = imgOpts.height;
+    }
+    else if (imgOpts.width > 0.0f){
+        float s = imgOpts.width / tw;
+        box->imgW = tw * s;
+        box->imgH = th * s;
+    }
+    else if (imgOpts.height > 0.0f){
+        float s = imgOpts.height / th;
+        box->imgW = tw * s;
+        box->imgH = th * s;
+    }
+    else{
+        // scale simple
+        box->imgW = tw * imgOpts.scale;
+        box->imgH = th * imgOpts.scale;
+    }
+    if(imgOpts.fit == FIT_NORENDER){
+        box->width = 0;
+        box->height = 0;
+    }
+    else if(imgOpts.fit == FIT_POSITION){
+        box->isPositionned = true;
+        box->pos.x = imgOpts.posX;
+        box->pos.y = imgOpts.posY;
+    }
+    else{
+        box->width = box->imgW;
+        box->height = box->imgH;
+    }
+}
+
+void rmviBuildFrac(RenderBox *box,Token *tokens, int tokenCount, int *index,Font font, float fontSize, float spacing){
+    if (!box || !tokens || !index) return;
+    float padding = fontSize * 0.02f;
+    RenderBox numBox = rmviBuildSubBox(tokens, tokenCount, index, font,fontSize, spacing);
+    RenderBox denBox = rmviBuildSubBox(tokens, tokenCount, index, font,fontSize, spacing);
+    if (numBox.size <= 0.0f) numBox.size = fontSize;
+    if (denBox.size <= 0.0f) denBox.size = fontSize;
+    RenderBox lineBox = (RenderBox){0};
+    lineBox.isLine = true;     ;
+    lineBox.size   = fontSize * 0.05f;
+    lineBox.pos    = (Vector2){0.0f, numBox.height + padding * 0.5f};
+    float contentW = fmaxf(numBox.width, denBox.width);
+    lineBox.width  = contentW;
+    denBox.pos.y += numBox.height + 2.0f * padding;
+    box->itemCount = 3;
+    box->items = MemAlloc(sizeof(RenderBox) * box->itemCount);
+    box->items[0] = numBox;
+    box->items[1] = denBox;
+    box->items[2] = lineBox;
+    box->width  = contentW + 2.0f * spacing;
+    box->height = numBox.height + denBox.height + 2.0f * padding;
+    float xShift = (denBox.width - numBox.width) * 0.5f;
+    box->items[0].pos.x += fmaxf(xShift, 0.0f);
+    box->items[1].pos.x += fmaxf(-xShift, 0.0f);
+    box->items[2].pos.x = spacing;
+    box->items[0].pos.x += spacing;
+    box->items[1].pos.x += spacing;
+}
+
+void rmviBuildSub(RenderBox *box, float *cursorX, float *cursorY, float *actuaLineSkip,
+                       Token *tokens, int tokenCount, int *index,
+                       Font font, float fontSize, float spacing){
+    if (!box  || !tokens || !index || *index < 0 || *index >= tokenCount) return;
+    float yShift = 0.0f;
+    if ((*index - 1) >= 0) {
+        if (tokens[*index - 1].text && strncmp(tokens[*index - 1].text, "^", 1) == 0) {
+            yShift = -RATIO_INDEX_UP * fontSize;
+        } else if (tokens[*index - 1].text && strncmp(tokens[*index - 1].text, "_", 1) == 0) {
+            yShift =  RATIO_INDEX_DOWN * fontSize;
+        }
+    }
+
+    if (tokens[*index].type == TOKEN_LBRACE) {
+        *box = rmviBuildSubBox(tokens, tokenCount, index, font, RATIO_INDEX * fontSize, spacing);
+        box->pos = (Vector2){ *cursorX, *cursorY + yShift };
+        *cursorX += box->width;
+        if (actuaLineSkip) *actuaLineSkip = fmaxf(*actuaLineSkip, box->height);
+    }
+    else {
+        Vector2 sizeText = rmviMeasureToken(&tokens[*index], font,RATIO_INDEX * fontSize, spacing, false);
+        box->pos = (Vector2){ *cursorX, *cursorY + yShift };
+        box->width  = sizeText.x;
+        box->height = sizeText.y;
+        box->token  = &tokens[*index];
+        box->size   = RATIO_INDEX * fontSize;
+        *cursorX += sizeText.x;
+        (*index)++;
+        if (actuaLineSkip) *actuaLineSkip = fmaxf(*actuaLineSkip, box->height);
+    }
+}
+
+
 
 // construit la boite de la commande
 RenderBox rmviBuildCommandBox(Token *tokens,int tokenCount,int *index,Font font,float fontSize,float spacing){
@@ -204,27 +407,23 @@ RenderBox rmviBuildCommandBox(Token *tokens,int tokenCount,int *index,Font font,
     box.command = cmd;
     if (cmd.env == FRAC){
         (*index)++; // skip \frac
-        RenderBox numBox = rmviBuildSubBox(tokens, tokenCount, index, font, fontSize, spacing);
-        RenderBox denBox = rmviBuildSubBox(tokens, tokenCount, index, font, fontSize, spacing);
-        RenderBox lineBox = {0};
-        lineBox.pos = (Vector2) {0,+numBox.height};
-        lineBox.width = max(numBox.width, denBox.width);
-        lineBox.line = true;
-        // Allocation des enfants
-        box.itemCount = 3;
-        box.items = MemAlloc(sizeof(RenderBox) * box.itemCount);
-        box.items[0] = numBox;
-        box.items[1] = denBox;
-        box.items[2] = lineBox;
-        // Dimensions globales
-        float fracLineThickness = fontSize * 0.08f;
-        float padding = fontSize * 0.3f;
-        box.width = fmaxf(numBox.width, denBox.width) + padding * 2;
-        box.height = numBox.height + denBox.height + padding * 2 + fracLineThickness;
-        // Positionnement relatif
-        float xShift = ( denBox.width - numBox.width) * 0.5f;
-        box.items[0].pos = (Vector2){xShift,0};
-        box.items[1].pos = (Vector2){-xShift ,0};
+        rmviBuildFrac(&box,tokens,tokenCount,index,font,RATIO_SIZE_FRAC* fontSize,RATIO_SIZE_FRAC*spacing);
+    }
+    else if(cmd.env == LOAD_IMAGE){
+        (*index)++;
+        char *opts = NULL;
+        ImgOpts imgOpts = {0};
+        if (tokens[*index].text[0] == '[') {
+            opts = rmviReadSymbolText(tokens, tokenCount, index, '[', ']');
+            imgOpts = rmviParseImgOpts(opts);
+            free(opts);
+        }
+        char *path = rmviReadSymbolText(tokens, tokenCount, index,'{','}');
+        box.isImage = true;
+        box.size = fontSize;
+        box.texPtr = rmviGetTexturePtrCached(path);
+        rmviBuildImageOpt(&box,imgOpts);
+        free(path);
     }
     else if (cmd.env == OTHER){
         if(false);
@@ -254,12 +453,50 @@ RenderBox rmviBuildCommandBox(Token *tokens,int tokenCount,int *index,Font font,
         GREC_LETTER("/infinity", &infinityToken)
         (*index)++;
     }
-    // --- AUTRE COMMANDE (fallback) ---
-    //box.token = &tokens[*index];
-    
     return box;
 }
-// on rentre après le "{"
+
+char* rmviReadSymbolText(Token *tokens, int tokenCount, int *index,char openChar, char closeChar){
+    int depth = 0;
+    // buffer temporaire
+    int capacity = 512;
+    int length = 0;
+    char *result = MemAlloc(capacity);
+    result[0] = '\0';
+    if (tokens[*index].text[0] == openChar && tokens[*index].text[1] == '\0') {
+        depth = 1;
+        (*index)++;
+    } else {
+        printf("rmviReadSymbolText: expected '%c', got '%s'\n",
+               openChar, tokens[*index].text);
+        return result;
+    }
+    while (depth > 0 && *index < tokenCount){
+        char *t = tokens[*index].text;
+        if (t[0] == openChar && t[1] == '\0') {
+            depth++;
+            (*index)++;
+            continue;
+        }
+        if (t[0] == closeChar && t[1] == '\0') {
+            depth--;
+            (*index)++;
+            continue;
+        }
+        int len = strlen(t);
+        if (length + len + 1 >= capacity) {
+            capacity *= 2;
+            result = MemRealloc(result, capacity);
+        }
+        memcpy(result + length, t, len);
+        length += len;
+        result[length] = '\0';
+        (*index)++;
+    }
+    return result;
+}
+
+
 RenderBox rmviBuildSubBox(Token *tokens,int tokenCount,int *index,Font font,float fontSize,float spacing){
     int depht = 0; //on commence a une profondeur de 0
     if(tokens[*index].type == TOKEN_LBRACE){
@@ -270,7 +507,7 @@ RenderBox rmviBuildSubBox(Token *tokens,int tokenCount,int *index,Font font,floa
     RenderBox box = {0};
     RenderBox children[32];
     int childCount = 0;
-    float cursorX = 0.0f;
+    float cursorX = 0.0f, cursorY = 0.0f;
     float maxHeight = 0.0f;
     Vector2 inter;
     box.itemCount = 0;
@@ -286,14 +523,20 @@ RenderBox rmviBuildSubBox(Token *tokens,int tokenCount,int *index,Font font,floa
         }
         else if(tokens[*index].type == TOKEN_COMMAND){
             RenderBox child = rmviBuildCommandBox(tokens,tokenCount,index,font,fontSize,spacing);
+            children[childCount++] = child;
+            box.width += child.width;
+            box.height += child.height;
+            box.size = fontSize;
         }
         else{
             RenderBox child = {0};
+            child.pos = (Vector2) {cursorX,cursorY};
             child.token = &tokens[*index];
             Vector2 size = rmviMeasureToken(&tokens[*index], font, fontSize, spacing, false);
             child.width  = size.x;
             child.height = size.y;
             child.size = fontSize;
+            child.isPositionned = false;
             maxHeight = fmaxf(maxHeight, size.y);
             children[childCount++] = child;
             (*index)++;
@@ -303,8 +546,8 @@ RenderBox rmviBuildSubBox(Token *tokens,int tokenCount,int *index,Font font,floa
     box.items = MemAlloc(sizeof(RenderBox) * childCount);
     memcpy(box.items, children, sizeof(RenderBox) * childCount);
     box.itemCount = childCount;
-    box.height = maxHeight;
-    box.width = cursorX;
+    box.height = max(maxHeight,box.height);
+    box.width = max(box.width,cursorX);
     return box;
 }
 
@@ -312,78 +555,103 @@ RenderBox rmviBuildSubBox(Token *tokens,int tokenCount,int *index,Font font,floa
 int rmviBuildRenderBoxes(Token *tokens,int tokenCount,RenderBox *boxes,Font font,float fontSize,float spacing){
     float cursorX = 0.0f;
     float cursorY = 0.0f;
+    float baseLineSkip = INTERLIGNE*fontSize;
+    float oldBaseLineSkip= baseLineSkip;
+    float actuaLineSkip = 0.0f;
     int count = 0;
-    for (int i = 0; i < tokenCount; ){
-        if(tokens[i].type == TOKEN_NEXTLINE){
+    int endLineCount = 0;
+    for (int index = 0; index < tokenCount; ){
+        if(tokens[index].type == TOKEN_NEXTLINE){
             cursorX = 0.0f;
-            cursorY += INTERLIGNE*fontSize;
-            i++;
+            cursorY += actuaLineSkip;
+            oldBaseLineSkip = actuaLineSkip;
+            actuaLineSkip = baseLineSkip;
+            index++;
+            endLineCount = count;
         }
-        else if (tokens[i].type == TOKEN_COMMAND){
-            RenderBox box = rmviBuildCommandBox(tokens, tokenCount, &i,font, fontSize, spacing);
-            box.pos.x = cursorX;
-            box.pos.y = cursorY;
-            cursorX += box.width;
+        else if (tokens[index].type == TOKEN_COMMAND){
+            Vector2 displacement = Vector2Zero();
+            RenderBox box = rmviBuildCommandBox(tokens, tokenCount, &index,font, fontSize, spacing);
+            // on peut mettre ici une fonction qui déplace le tout à la place
+            if(box.isPositionned){
+                if(box.pos.x == -1) box.pos.x += cursorX + 1;
+                if(box.pos.y == -1) box.pos.y += cursorY + 1;
+            }
+            else {
+                box.pos.x += cursorX;
+                box.pos.y += cursorY;
+            }
+            cursorX += box.width + MeasureText(" ", fontSize);
+            // on arrive ici normalement si une frac est mise dans un texte
+            if(box.command.env == FRAC){
+                // si l'item du haut est plus grand que treshold alors on monte la fraction et on descend tout ce qui suit
+                bool numIsBig = (box.items[0].height) > (oldBaseLineSkip);
+                bool denIsBig = (box.items[1].height) > (oldBaseLineSkip);
+                float minInterLine = 0.1f;
+                float fracRatioPlace = 0.5f;
+                if(numIsBig && oldBaseLineSkip > 0){                              // et que l'interstice est trop faible
+                    float shiftY = box.items[0].height - fontSize*fracRatioPlace; // ici je pense qu'il faut tenir compte du oldbaselineskip
+                    for(int i = endLineCount; i < count; i++){
+                        boxes[i].pos.y += shiftY;
+                        cursorY = boxes[i].pos.y;
+                        oldBaseLineSkip += shiftY;                                 // on met à jour l'indentation qu'on a fait
+                    }
+                }
+                // if den is big ? 
+                actuaLineSkip = max(box.items[1].height + fontSize*(fracRatioPlace+minInterLine), actuaLineSkip);
+                box.pos.y = cursorY - box.items[0].height + fontSize*fracRatioPlace;
+            } 
             boxes[count++] = box;
         }
-        else if( tokens[i].type == TOKEN_SUB){
-            i++;
-            float yShift;
-            if(strncmp(tokens[i-1].text, "^",1) == 0 ){
-                yShift = -RATIO_INDEX_UP*fontSize;
-            }
-            else if(strncmp(tokens[i-1].text, "_",1) == 0){ //
-                yShift = RATIO_INDEX_DOWN*fontSize;
-            }
-            if (tokens[i].type == TOKEN_LBRACE){    
-                RenderBox box = rmviBuildSubBox(tokens, tokenCount, &i, font, RATIO_INDEX*fontSize, spacing);
-                box.pos = (Vector2) {cursorX, cursorY + yShift};
-                boxes[count++] = box;
-            }
-            else{
-                Vector2 sizeText = rmviMeasureToken(&tokens[i], font, RATIO_INDEX*fontSize, spacing, false);
-                RenderBox box;
-                box.pos =(Vector2) {cursorX, cursorY + yShift};
-                box.width = sizeText.x;
-                box.height = sizeText.y,
-                box.token = &tokens[i];
-                box.size = fontSize*RATIO_INDEX;
-                cursorX += sizeText.x;
-                boxes[count++] = box;
-                i++;
-            }
+        else if( tokens[index].type == TOKEN_SUB){
+            index++;
+            RenderBox box = {0};
+            rmviBuildSub(&box,&cursorX,&cursorY,&actuaLineSkip,tokens,tokenCount,&index,font,fontSize,spacing);
+            boxes[count++] = box;
         }
         else{
             // met un espace après un mot si n'est pas après _ ou ^
-            Vector2 size = rmviMeasureToken(&tokens[i], font, fontSize, spacing, (tokens[i+1].type != TOKEN_SUB));
-            boxes[count].pos.x = cursorX;
-            boxes[count].pos.y = cursorY;
-            boxes[count].width = size.x;
-            boxes[count].height = size.y;
-            boxes[count].token = &tokens[i];
-            boxes[count].size = fontSize;
+            Vector2 size = rmviMeasureToken(&tokens[index], font, fontSize, spacing, (tokens[index+1].type != TOKEN_SUB));
+            RenderBox box ={0};
+            box.pos.x = cursorX;
+            box.pos.y = cursorY;
+            box.width = size.x;
+            box.height = size.y;
+            box.token = &tokens[index];
+            box.size = fontSize;
+            boxes[count] = box;
             cursorX += size.x;
             count++;
-            i++;
+            index++;
+            actuaLineSkip = max(box.height,actuaLineSkip);
         }
     }
     return count;
 }
 
 void rmviDrawRenderBox(RenderBox *box,Vector2 basePos,Font font,float fontSize,float spacing,Color color){ 
-    Vector2 drawPos = { basePos.x + box->pos.x, basePos.y + box->pos.y }; 
-    // --- CAS 1 : box composée (liste d’items) --- 
+    Vector2 drawPos;
+    if(box->isPositionned) drawPos = (Vector2){ box->pos.x,box->pos.y }; 
+    else drawPos = (Vector2) { basePos.x + box->pos.x, basePos.y + box->pos.y }; 
     if (box->itemCount > 0 && box->items){ 
-        float cursorX = 0.0f; for (int i = 0; i < box->itemCount; i++){ RenderBox *child = &box->items[i]; 
-            //Vector2 childPos = { drawPos.x + cursorX + child->pos.x, drawPos.y + child->pos.y };
-            rmviDrawRenderBox(child,drawPos,font,child->size,spacing,color); cursorX += child->width;
+        float cursorX = 0.0f; 
+        for (int i = 0; i < box->itemCount; i++){ RenderBox *child = &box->items[i]; 
+            rmviDrawRenderBox(child,drawPos,font,child->size,spacing,color); 
+            cursorX += child->width;
         }
     }
-    else if (box->token) DrawTextEx(font,box->token->text,drawPos,fontSize,spacing,color);
-    else DrawLine(drawPos.x,drawPos.y, drawPos.x + box->width, drawPos.y,color);
+    else if (box->token){
+        DrawTextEx(font,box->token->text,drawPos,fontSize,spacing,color);   
+    } 
+    else if(box->isLine){
+        DrawLineEx((Vector2) {drawPos.x,drawPos.y}, (Vector2) {drawPos.x + box->width, drawPos.y},box->size,color);
+    }
+    else if(box->isImage){
+        Rectangle src = (Rectangle){0,0,(float)box->texPtr->width,(float)box->texPtr->height};
+        Rectangle dst = (Rectangle){drawPos.x, drawPos.y, box->imgW, box->imgH};
+        rmviRotateTexture(*box->texPtr, src, dst, (Vector2){0,0}, 0.0f, WHITE);
+    }
 }
-
-
 
 void rmviDrawRenderBoxes(RenderBox *boxes,int count,Vector2 basePos,Font font,float fontSize,float spacing,Color color){
     for (int i = 0; i < count; i++){
@@ -393,14 +661,12 @@ void rmviDrawRenderBoxes(RenderBox *boxes,int count,Vector2 basePos,Font font,fl
 
 
 void rmviGetCustomFont(const char *path, float fontSize) {
-    int codepoints[MAX_CODEPOINTS];
+    int codepoints[256];
     int count = 0;
-
     // ASCII imprimables (espace -> ~)
     for (int i = 32; i <= 126; i++) {
         codepoints[count++] = i;
     }
-
     // Lettres accentuées minuscules
     codepoints[count++] = 0x00E9; // é
     codepoints[count++] = 0x00E8; // è
@@ -468,11 +734,7 @@ void rmviGetCustomFont(const char *path, float fontSize) {
     codepoints[count++] = 0x03A6; // Φ
     codepoints[count++] = 0x03A8; // Ψ
     codepoints[count++] = 0x03A9; // Ω
-    codepoints[count++] = 0x222B; // ∫
-    
-    
-    
-
+    codepoints[count++] = 0x222B; // 
     // Chargement
     mathFont = LoadFontEx(path, fontSize, codepoints, count);
 }

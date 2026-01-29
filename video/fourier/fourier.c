@@ -16,6 +16,8 @@
 #define NBPLANETS 7
 
 #define NFOURIER 200 // nombre de coefficient de fourier
+#define SIZE_TEXT 40
+#define SIZE_SPACING SIZE_TEXT/20
 
 Vector2 centerView; // centre initial sur le soleil
 Vector2 centerSpeed;
@@ -42,7 +44,7 @@ int bm_visual_initialisation(void) {
     InitWindow(screenWidth, screenHeight, "test example");
     SetTargetFPS(FPS); 
     screen = LoadRenderTexture(GetScreenWidth(), GetScreenHeight());
-    rmviGetCustomFont(FONT_PATH, 80);
+    rmviGetCustomFont(FONT_PATH, 256);
     if (RECORDING) ffmpeg = ffmpeg_start_rendering(GetScreenWidth(), GetScreenHeight(), FPS);
     if (AUDIO_RECORDING) {
         InitAudioDevice();                                      // Initialise audio
@@ -249,9 +251,9 @@ int bm_visual_main(void)
     float w1 = rmviCalcTextWidth(t1, mathFont,60,60/15);
     float w2 = rmviCalcTextWidth(t2, mathFont,60,60/15);
     Token tokens[256];
-    int tokenCount = rmviTokenizeLatex("j'écris ceci a^{etceci + ca} // /Delta t puis on continue avec cela /delta /phi /psi // /frac{a}{b} aprés la frac", tokens, 256);
+    int tokenCount = rmviTokenizeLatex("j'écris ceci a^{etceci + ca} // /Delta t puis on continue avec cela /delta /phi /psi // avant /frac{/frac{a}{b}}{/frac{c}{d}} aprés la frac et une deuxieme // /loadimage[scale=0.2 , fit = noRender, posY = 1000 ]{C:/Users/ryanm/Documents/Rmvi/animation/video/solarSystem/Image/decompte/decompte_0001.jpg} si on écrit après", tokens, 256);
     RenderBox boxes[256];
-    int boxCount = rmviBuildRenderBoxes(tokens, tokenCount, boxes, mathFont, 32, 1);
+    int boxCount = rmviBuildRenderBoxes(tokens, tokenCount, boxes, mathFont, SIZE_TEXT, SIZE_SPACING);
     while (!WindowShouldClose())
     {
         BeginTextureMode(screen);
@@ -261,7 +263,7 @@ int bm_visual_main(void)
                 space_count ++;
                 countFrame = 0;
             }
-            rmviDrawRenderBoxes( boxes, boxCount, (Vector2){100, 200}, mathFont, 32, 1, WHITE);
+            rmviDrawRenderBoxes( boxes, boxCount, (Vector2){100, 200}, mathFont, SIZE_TEXT, SIZE_SPACING, WHITE);
             if(IsKeyPressed(KEY_R)) reset_dash = true;
             //slideOne();
             DrawFPS(10, 10);

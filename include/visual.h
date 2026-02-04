@@ -242,4 +242,6 @@ void rmvidrawAnime2(Anime2 *anime, Vector2 position, float scale, Color color, b
 void mp4ToTexture(const char *pathFile, const char *outDir, const char *name);
 Video LoadVideo(const char *mp4Path, const char *outDir, const char *name, float fallbackFPS);
 void PlayVideo(Video *video);
+
+void UpdateCursorToggle();
 #endif // VISUAL_H

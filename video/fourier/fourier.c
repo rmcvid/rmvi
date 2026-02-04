@@ -30,7 +30,8 @@ rmviPlanet *planets[NBPLANETS] = {&sun, &mercury, &venus, &earth, &mars, &jupite
 rmviDash dashSun[MEMORY], dashMercury[MEMORY], dashVenus[MEMORY], dashEarth[MEMORY], dashMars[MEMORY], dashJupiter[MEMORY], dashSaturn[MEMORY];
 rmviDash *dashList[NBPLANETS] = {dashSun, dashMercury, dashVenus, dashEarth, dashMars, dashJupiter, dashSaturn};
 bool reset_dash = false;
-float frameInitCenterView = 0.0f, countFrame = 0.0f;                  // Début du centrage sur la terre
+float frameInitCenterView = 0.0f, 
+countFrame = 0.0f;                  // Début du centrage sur la terre
 
 Image image;    // pour ffmpeg
 
@@ -184,6 +185,21 @@ void slideOne(void){
     }
 }
 
+void slideTwo(Vector2 *figure, Texture2D texture,float scale,FourierCoeff *coeff, int timeFourier){
+    DrawTextureEx(texture, (Vector2){GetScreenWidth()/4.0f - texture.width/2*scale,GetScreenHeight()/2.0f-texture.height/2*scale }, 0.0f, scale, WHITE);
+    int i = (int)countFrame;
+    if (i < 0) i = 0;
+    if (i >= FPS*timeFourier );
+    else{    
+    rmviDrawFourier(coeff, NFOURIER,
+                    (Vector2){3*GetScreenWidth()/4.0f, GetScreenHeight()/2.0f},
+                    10.0f, WHITE,
+                    countFrame,
+                    &figure[i]);
+    }
+    rmviDrawFourierFigure(countFrame, figure, timeFourier, FPS, WHITE);
+}
+
 rmviPointArray read_csv_points(const char *filename) {
     rmviPointArray points = {NULL, NULL, 0};
     FILE *fp = fopen(filename, "r");
@@ -230,8 +246,8 @@ FourierCoeff *testFFT(rmviPointArray points){
     return coeffs;
 }
 
-int bm_visual_main(void)
-{   
+
+int bm_visual_main(void){   
     initialisePlanets();
     // initialisation des de la couleur des dashs
     colorListPlanet[sizeof(planets) / sizeof(planets[0])];
@@ -243,19 +259,26 @@ int bm_visual_main(void)
     //rmviPointArray points = read_csv_points(IMAGE_PATH"points_fourier.csv");
     rmviPointArray points = read_csv_points(IMAGE_PATH"ryan_jupyter.csv");
     FourierCoeff *coeff = testFFT(points);
+    Texture2D ryanJpg = LoadTexture(IMAGE_PATH "ryan.jpg");
     //rmviPlanet3D mars3D = rmviGetPlanet3D();
-
     // ecrire du texte
+    bool anim1 = true;
     const char *t1 = "";
     const char *t2 = "";
+    int countAnim = 0;
     float w1 = rmviCalcTextWidth(t1, mathFont,60,60/15);
     float w2 = rmviCalcTextWidth(t2, mathFont,60,60/15);
     Token tokens[256];
-    int tokenCount = rmviTokenizeLatex("j'écris ceci a^{etceci + ca} // /Delta t puis on continue avec cela /delta /phi /psi // avant /frac{/frac{a}{b}}{/frac{c}{d}} aprés la frac et une deuxieme // /loadimage[scale=0.2 , fit = noRender, posY = 1000 ]{C:/Users/ryanm/Documents/Rmvi/animation/video/solarSystem/Image/decompte/decompte_0001.jpg} si on écrit après", tokens, 256);
+    int tokenCount = rmviTokenizeLatex("On ecrit avant /begin(itemize) /item On remet ensuite un super long texte qui drevrait pareillement etre mis sur plusieurs lignes /item on vérifie que le troisième est bien /item on tente un deuxieme /begin(itemize) /item On remet ensuite un super long texte qui drevrait pareillement etre mis sur plusieurs lignes /item un deuxieme ici /end(itemize) /item et un dernier /end(itemize) et puis on écrit ici", tokens, 256); //// /frac{/frac{a}{b}}{/frac{c}{d}}  /loadimage[scale=0.2 , fit = noRender, posY = 1000 ]{C:/Users/ryanm/Documents/Rmvi/animation/video/solarSystem/Image/decompte/decompte_0001.jpg} // /Delta t puis on continue avec cela /delta /phi /psi  // avant  aprés la frac et une deuxieme //  si on écrit après
     RenderBox boxes[256];
+    float scale = 0.3;
     int boxCount = rmviBuildRenderBoxes(tokens, tokenCount, boxes, mathFont, SIZE_TEXT, SIZE_SPACING);
     while (!WindowShouldClose())
     {
+        if(IsKeyPressed(KEY_Q)){
+            anim1 = !anim1;
+            countFrame = 0;
+        }
         BeginTextureMode(screen);
             ClearBackground(BG);
             if(IsKeyPressed(KEY_M)) rec.isRecording ? StopAudioRecorder(&rec) : StartAudioRecorder(&rec);
@@ -265,7 +288,13 @@ int bm_visual_main(void)
             }
             rmviDrawRenderBoxes( boxes, boxCount, (Vector2){100, 200}, mathFont, SIZE_TEXT, SIZE_SPACING, WHITE);
             if(IsKeyPressed(KEY_R)) reset_dash = true;
-            //slideOne();
+            
+            /*if(anim1){
+                slideOne();
+            }
+            else{
+                slideTwo(figure,ryanJpg,scale, coeff,timeFourier);
+            }*/
             DrawFPS(10, 10);
         EndTextureMode();
         rmviDraw();

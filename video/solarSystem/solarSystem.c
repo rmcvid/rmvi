@@ -11,6 +11,7 @@
 #define MAX_PARAGRAPH 8192
 #define SIZE_TEXT 40.0f
 #define SIZE_SPACING SIZE_TEXT/5.0f
+// /loadvideo{C:\Users\ryanm\Documents\Rmvi\animation\video\solarSystem\Image\decompte}{decompte}
 
 typedef struct{
     int    position;
@@ -136,7 +137,7 @@ int bm_visual_main(void)
     int rotationFrame = 0;
     int oldCountRight = -1;
     //mp4ToTexture(IMAGE_PATH "decompte/decompte.mp4", IMAGE_PATH "decompte", "decompte");
-    Video decompte = LoadVideo(IMAGE_PATH "decompte/decompte.mp4", IMAGE_PATH "decompte", "decompte", 0);
+    //Video decompte = LoadVideo(IMAGE_PATH "decompte/decompte.mp4", IMAGE_PATH "decompte", "decompte", 0);
     // asteroid
     Shader asteroidShader = LoadShader(SHADER_PATH "asteroid.vs", SHADER_PATH "asteroid.fs");
     unsigned int astViewLoc = rlGetLocationUniform(asteroidShader.id, "view");
@@ -199,6 +200,7 @@ int bm_visual_main(void)
     float startTime = GetTime();
     while (!WindowShouldClose())
     {
+        UpdateCursorToggle();
         curentFrame = GetTime();
         deltatime = curentFrame - oldFrame;
         oldFrame = curentFrame;
@@ -210,7 +212,7 @@ int bm_visual_main(void)
             // Player movement and camera
             processInput();
             updateMouse();
-            PlayVideo(&decompte);
+            //PlayVideo(&decompte);
             rmviGravityRepulsion3D(features,planetCount);
             updateZoom(GetMouseWheelMoveV());
             viewMat = MatrixLookAt(
@@ -290,7 +292,7 @@ int bm_visual_main(void)
             if(actualRep.ecrit){
                 if(oldCountRight != actualRep.countRight){
                 oldCountRight = actualRep.countRight;
-                paragraph = readScenario(HERE_PATH "text.txt", actualRep.countRight);
+                paragraph = readScenario(HERE_PATH "presentation.txt", actualRep.countRight);
                 if( paragraph != NULL){
                     paragraphHeight = rmviCalcTextHeight(paragraph, mathFont, SIZE_TEXT, SIZE_SPACING, true);
                     paragraphPos = (Vector2) { CENTER.x, CENTER.y - paragraphHeight/2.0f };
@@ -707,6 +709,8 @@ void processInput(){
     if (IsKeyPressed(KEY_E)) actualRep.ecrit = !actualRep.ecrit;
     if (IsKeyPressed(KEY_RIGHT) && actualRep.ecrit) actualRep.countRight++;
     if (IsKeyPressed(KEY_LEFT) && actualRep.countRight > 0) actualRep.countRight--;
+    if (IsKeyPressed(KEY_J)) actualRep.reference = 5;
+    if (IsKeyPressed(KEY_T)) actualRep.reference = 3;
     
 }
 

@@ -102,7 +102,6 @@ Petite digression au passage:
 Bon en tout cas ici tout est déterministe et on utilise des conditions initiales plausibles qui ménèront à un modèle plausible.
 Ainsi on place toutes les planètes à l'aphélie, soit le point le plus éloigné du soleil et où leurs vitesses est minimales.
 
-/loadvideo{C:\Users\ryanm\Documents\Rmvi\animation\video\solarSystem\Image\decompte}{decompte}
 
 # simulation du système solaire
 ok pour le soleil plutot que d'utiliser une texture on va utiliser un shader ca donnera du dynamisme.

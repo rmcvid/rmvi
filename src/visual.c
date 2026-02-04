@@ -1031,5 +1031,12 @@ void PlayVideo(Video *video)
     DrawTexture(video->frames[frame], 0, 0, WHITE);
 }
 
-
+void UpdateCursorToggle(){
+    if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+        if (IsCursorHidden())
+            EnableCursor();
+        else
+            DisableCursor();
+    }
+}
 

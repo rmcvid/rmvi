@@ -81,6 +81,7 @@ typedef struct RenderBox {
     bool isImage;
     float imgScale;       
     float imgW, imgH;
+    bool isEndLine;
     ImageFit fit;
 } RenderBox;
 
@@ -101,12 +102,6 @@ void rmviWriteLatex(const char *latex, Vector2 *position, float sizeText, float 
 float rmviCalcTextWidth(const char *latex, Font font, float sizeText, float spacing);
 static int utf8_char_len(unsigned char c);
 static int copy_utf8_char(char *dst, const char *src);
-float rmviCalcBeginHeight(const char *env, int start, const char *latex, Font font, float sizeText, float spacing, bool isNested);
-float rmviCalcTextHeight(const char *latex, Font font, float sizeText, float spacing, bool isNested);
-void rmviWriteBegin(const char *env, const char *body, Vector2 *pos, Vector2 initPos, float sizeText, float spacing, Color color, Font font, bool isNested);
-int rmviLenBegin(const char *latex, int start, const char *env);
-float rmviCalcBeginWidth(const char *env, int start, const char *latex, Font font, float sizeText, float spacing);
-void rmviWriteItemize(const char *body, Vector2 *pos, float sizeText, float spacing, Color color, Font font);
 char *rmviGetEnv(int *i, const char *latex);
 int rmviLenItem(const char *latex, int start);
 float rmviCalcItemizeHeight(const char *body, int start, Font font, float sizeText, float spacing, bool isNested);
@@ -114,10 +109,6 @@ char **rmviSplitText(const char *text);
 void rmviWriteAnimText(const char *text, Vector2 position, float size, Color color,int frameStart, int currentFrame);
 void rmviWriteLatexLeftCentered(const char *latex, Vector2 *position, float sizeText, float spacing, Color color, Font font);
 void rmviWriteLatexLeftCenteredClassic(const char *latex, Vector2 *position);
-void rmviLoadImage(const char *path, Vector2 position, float scale);
-int rmviHasPosition(const char *latex, int startIndex, bool *hasPosition,  Vector2 *imgPos);
-void rmviWriteEquation(const char *latex, Vector2 *position, float sizeText, float spacing, Color color, Font font);
-void rmviWriteFraction(const char *numerator, const char *denominator, Vector2 *position, float sizeText, float spacing, Color color, Font font);
 float rmviCalcEquationHeight(const char *latex, Font font, float sizeText, float spacing);
 
 int rmviTokenizeLatex(const char *latex, Token *tokens, int maxTokens);
@@ -130,4 +121,7 @@ bool depthContinue(const Depth *depth);
 bool depthUpdate(Depth *depht, Token *tokens, int *index);
 RenderBox rmviBuildBrace(Token *tokens, int *index, int tokenCount, Font font, int fontSize, int spacing);
 void rmviLineSkip(Vector2* cursor, float ratio, float fontSize, float height);
+int rmviCalcWidthLine(RenderBox *boxes, int boxCount, float **outListWidth);
+void rmviDrawRenderBoxesCentered(float *listWidth,RenderBox *boxes, int boxCount, Vector2 centerPos,Font font,float fontSize,float spacing,Color color);
+
 #endif // TEXT2LATEX_H

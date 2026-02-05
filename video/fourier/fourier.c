@@ -266,13 +266,14 @@ int bm_visual_main(void){
     const char *t1 = "";
     const char *t2 = "";
     int countAnim = 0;
-    float w1 = rmviCalcTextWidth(t1, mathFont,60,60/15);
-    float w2 = rmviCalcTextWidth(t2, mathFont,60,60/15);
     Token tokens[256];
-    int tokenCount = rmviTokenizeLatex("On ecrit avant /begin(itemize) /item On remet ensuite un super long texte qui drevrait pareillement etre mis sur plusieurs lignes /item on vérifie que le troisième est bien /item on tente un deuxieme /begin(itemize) /item On remet ensuite un super long texte qui drevrait pareillement etre mis sur plusieurs lignes /item un deuxieme ici /end(itemize) /item et un dernier /end(itemize) et puis on écrit ici", tokens, 256); //// /frac{/frac{a}{b}}{/frac{c}{d}}  /loadimage[scale=0.2 , fit = noRender, posY = 1000 ]{C:/Users/ryanm/Documents/Rmvi/animation/video/solarSystem/Image/decompte/decompte_0001.jpg} // /Delta t puis on continue avec cela /delta /phi /psi  // avant  aprés la frac et une deuxieme //  si on écrit après
+    int tokenCount = rmviTokenizeLatex("", tokens, 256); // /loadimage[scale=0.2 , fit = noRender, posY = 400, posX = 400 ]{C:/Users/ryanm/Documents/Rmvi/animation/video/solarSystem/Image/decompte/decompte_0001.jpg} // /frac{/frac{a}{b}}{/frac{c}{d}}   // /Delta t puis on continue avec cela /delta /phi /psi  // avant  aprés la frac et une deuxieme //  si on écrit après
+    
     RenderBox boxes[256];
     float scale = 0.3;
     int boxCount = rmviBuildRenderBoxes(tokens, tokenCount, boxes, mathFont, SIZE_TEXT, SIZE_SPACING);
+    float *listWidth;
+    int linesCount =rmviCalcWidthLine(boxes, boxCount,&listWidth);
     while (!WindowShouldClose())
     {
         if(IsKeyPressed(KEY_Q)){
@@ -287,6 +288,7 @@ int bm_visual_main(void){
                 countFrame = 0;
             }
             rmviDrawRenderBoxes( boxes, boxCount, (Vector2){100, 200}, mathFont, SIZE_TEXT, SIZE_SPACING, WHITE);
+            rmviDrawRenderBoxesCentered(listWidth, boxes, boxCount, (Vector2){GetScreenWidth()/2, GetScreenHeight()/2}, mathFont, SIZE_TEXT, SIZE_SPACING, WHITE);
             if(IsKeyPressed(KEY_R)) reset_dash = true;
             
             /*if(anim1){

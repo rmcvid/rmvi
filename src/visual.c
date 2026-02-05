@@ -35,21 +35,8 @@ void rmviDrawTextMid(const char *text, Rectangle rec, Color color, float ratio, 
 }
 void rmviDrawTextRec(const char *text, Rectangle rec, Color color, float ratio,
                      float ratioWidth, float ratioHeight, Font font) {
-    if (ratio <= 0) ratio = RATIODEFAULT;  // valeur par défaut
-    float sizeText = rec.height / ratio;
-    float spacing = (sizeText / RATIO_SPACE) * ratioWidth;  // scaling horizontal correct
-    // Compter le nombre de lignes
-    // Mesurer le texte avec spacing
-    // Donne la position centrale du rectangle
-    float posX = rec.x + (rec.width - rmviCalcTextWidth(text, font, sizeText, spacing)) * ratioWidth;
-    float posY = rec.y + (rec.height - rmviCalcTextHeight(text, font, sizeText, spacing, false)) * ratioHeight;
-    // Dessiner
-    char **splittxt = rmviSplitText(text);
-    for (int i = 0; splittxt[i] != NULL; i++) {
-        posX = rec.x + (rec.width - rmviCalcTextWidth(splittxt[i], font, sizeText, spacing)) * ratioWidth;
-        if(i!=0) posY = posY + rmviCalcTextHeight(splittxt[i-1], font, sizeText, spacing, false);
-        rmviWriteLatex(splittxt[i], &(Vector2){ posX, posY }, sizeText, spacing, color, font);
-    }
+    printf("Fct rmviDrawTextRec à implémenter");
+    exit(EXIT_FAILURE);
 }
 
 Rectangle rmviGetRectangleCenteredRatio(float x, float y, float ratio_x, float ratio_y) {
@@ -644,11 +631,14 @@ void rmviDrawTreeSquareWrite(rmviTree *tree, float leftRatio, const char **listT
             rmviDrawArrowRect2(start, end, ARROWSIZE, RATIODEFAULT, leftRatio, DRAWCOLOR);
             if (listText != NULL && listText[count + j] != NULL) {
                 float startRight = start.x + (end.x- start.x)* leftRatio;
-                Vector2 position = { startRight + (end.x - startRight) * ratioWriteArrow - rmviCalcTextWidth(listText[count + j], mathFont, size, size / RATIO_SPACE)/2, end.y - rmviCalcTextHeight(listText[count + j], mathFont, size, size / RATIO_SPACE, false)} ;
+                // Vector2 position = { startRight + (end.x - startRight) * ratioWriteArrow - rmviCalcTextWidth(listText[count + j], mathFont, size, size / RATIO_SPACE)/2, end.y - rmviCalcTextHeight(listText[count + j], mathFont, size, size / RATIO_SPACE, false)} ;
+                Vector2 position = {0 ,0};
                 rmviMyDrawText(listText[count + j], position, size, color);
             }
         }
-        count += nChildren;
+        count += nChildren; 
+        printf(" fct rmviDrawTreeSquareWrite à implémenter car rmviCalcTextWidth n'existe plus");
+        exit(EXIT_FAILURE);
     }
 }
 

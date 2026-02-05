@@ -43,6 +43,23 @@ Font mathFont;
     box.height = size.y;\
     } \
 
+#define RMVI_GROW_CAP(cap) ((cap) ? (cap) * 2 : 32)
+#define RMVI_ENSURE_CAP(ptr, count, cap, T) do {                     \
+    if ((count) >= (cap)) {                                          \
+        size_t newCap = RMVI_GROW_CAP(cap);                          \
+        void *newPtr = realloc((ptr), newCap * sizeof(T));           \
+        if (!newPtr) { /* handle OOM */ exit(1); }                   \
+        (ptr) = (T*)newPtr;                                          \
+        (cap) = newCap;                                              \
+    }                                                                \
+} while(0)
+#define RMVI_PUSH(ptr, count, cap, T, value) do {                    \
+    RMVI_ENSURE_CAP(ptr, count, cap, T);                             \
+    (ptr)[(count)++] = (value);                                      \
+} while(0)
+
+
+
 typedef struct {
     char type;
     Color color;
@@ -133,7 +150,8 @@ static Texture2D *rmviGetTexturePtrCached(const char *path){
 
 
 static int isOperator(char c) {
-    return (c == '+' || c == '-' || c == '*' || c == '='|| c == '.' || c ==':' || c == ',' );
+    return (c == '+' || c == '-' || c == '*' || c == '='|| c == '.' || c ==':' || c == ',' || c == '<' || 
+    c == '>' || c == ')' || c == '(');
 }
 static int isAlphaNum(unsigned char c)
 {
@@ -198,7 +216,7 @@ int rmviTokenizeLatex(const char *latex, Token *tokens, int maxTokens){
             else{
                 tokens[count].text[j++] = latex[i++]; // on prend le premier d'office
                 //ici
-                while (( isAlphaNum(latex[i]) || latex[i] == '(' || latex[i] == ')' ) && j < TOKEN_TEXT_MAX - 1) {
+                while (( isAlphaNum(latex[i]) || isOperator(latex[i]) ) && j < TOKEN_TEXT_MAX - 1) {
                     tokens[count].text[j++] = latex[i++];
                 }
                 tokens[count].text[j] = '\0';
@@ -250,7 +268,7 @@ int rmviTokenizeLatex(const char *latex, Token *tokens, int maxTokens){
         else if(isAlphaNum(c)) {
             int j = 0;
             tokens[count].type = TOKEN_SYMBOL;
-            while (isAlphaNum(latex[i]) && j < TOKEN_TEXT_MAX - 1) {
+            while ( (isAlphaNum(latex[i]) || isOperator(latex[i])) && j < TOKEN_TEXT_MAX - 1) {
                 tokens[count].text[j++] = latex[i++];
             }
             tokens[count].text[j] = '\0';
@@ -404,7 +422,6 @@ RenderBox rmviBuildFrac(Token *tokens,int tokenCount, int *index, Font font, flo
 
 // build l'exposant et le sub
 RenderBox rmviBuildSub(Token *tokens, int tokenCount, int *index,Font font, float fontSize, float spacing){
-    RenderBox children[32];
     RenderBox box ={0};
     Vector2 cursor = Vector2Zero();
     float yShift = 0.0f;
@@ -560,13 +577,15 @@ RenderBox rmviBuildBrace(Token *tokens, int *index, int tokenCount, Font font, i
     Depth depthSub ={0};
     depthUpdate(&depthSub,tokens,index);
     int childCount = 0;
-    RenderBox children[32];
+    int childCap = 0;
+    int initMemory = 32;
+    RenderBox *children = NULL;
     while(depthContinue(&depthSub)){
         if(depthUpdate(&depthSub,tokens,index)){
         }
         else{
             RenderBox child = rmviMain2Box(tokens, tokenCount, font, fontSize,spacing, index);
-            children[childCount++] = child;
+            RMVI_PUSH(children,childCount,childCap,RenderBox, child);
             box.width += child.width;                       // ici à modifier ?
             box.height = max(box.height, child.height);
         }
@@ -574,6 +593,7 @@ RenderBox rmviBuildBrace(Token *tokens, int *index, int tokenCount, Font font, i
     // ici on peut metre un truc du style si un seul enfant
     box.items = MemAlloc(sizeof(RenderBox) * childCount);
     memcpy(box.items, children, sizeof(RenderBox) * childCount);
+    free(children);
     box.itemCount = childCount;
     return box;
 }
@@ -584,21 +604,23 @@ void rmviFixChildPositionNext(RenderBox *box){
     for(int i = 0; i < box->itemCount; i++){
         height = max(box->items[i].height,height);
         if(cursor.x + box->items[i].width > RATIO_LEN_TEXT){ // ici à modifier je pense
+            box->items[i].isEndLine = true;
             rmviLineSkip(&cursor,INTERLIGNE, box->size, height);
             box->height += height + INTERLIGNE*box->size;
             height = box->size;
         }
         if( box->items[i].token && box->items[i].token->type == TOKEN_DISPLACE){
-            rmviLineSkip(&cursor,INTERLIGNE_ITEM, box->size, box->size);
-            box->items[i].pos = Vector2Add(box->items[i].pos,cursor);
-            box->height += box->items[i].height ;
-            cursor.y += box->height;
-            cursor.x += 0;
+            box->items[i].token = NULL;
+            box->items[i].isEndLine = true;
+            rmviLineSkip(&cursor,INTERLIGNE_ITEM, box->size, height);
+            box->height += height + INTERLIGNE*box->size; ;
+            height = box->size;
         }
         // if passage à la ligne ?
         else {
             box->items[i].pos.x += cursor.x;
             box->items[i].pos.y += cursor.y;
+            height = max(height,box->items[i].height);
             cursor.x += box->items[i].width;
             if(box->width < RATIO_LEN_TEXT) box->width +=box->items[i].width;
             else box->width = RATIO_LEN_TEXT;
@@ -627,9 +649,10 @@ RenderBox rmviBuildSpace(Token *tokens,int tokenCount,int *index,Font font,float
 }
 RenderBox rmviBuildItem(Token *tokens,int tokenCount,int *index,Font font,float fontSize,float spacing){
     RenderBox box = {0};
-    RenderBox children[32];
-    box.size = fontSize;
+    RenderBox *children = NULL;
+    int childCap = 0;
     int childCount = 0;
+    box.size = fontSize;
     if(tokens[*index].type == TOKEN_RBRACKET){
         // cas ou item[qqch]
     }
@@ -638,26 +661,28 @@ RenderBox rmviBuildItem(Token *tokens,int tokenCount,int *index,Font font,float 
         child.token = &tiretToken;
         child.width = rmviMeasureToken(child.token,font,fontSize,spacing,true).x;
         child.size = fontSize;
-        children[childCount++] = child;
+        RMVI_PUSH(children, childCount, childCap, RenderBox, child);
         // on remplace le premier box par un tiret -
     }
     while(tokens[*index].type != TOKEN_END_ITEMIZE && tokens[*index].type != TOKEN_ITEM){
         ERROR_OUT_OF_INDEX(*index, tokenCount);
         RenderBox child = {0};
         child = rmviMain2Box(tokens,tokenCount,font,fontSize,spacing,index);
-        children[childCount++] = child;
+        RMVI_PUSH(children, childCount, childCap, RenderBox, child);
 
     }
     box.items = MemAlloc(sizeof(RenderBox) * childCount);
     memcpy(box.items, children, sizeof(RenderBox) * childCount);
     box.itemCount = childCount;
     rmviFixChildPositionNext(&box);
+    free(children);
     return box;
 }
 
 RenderBox rmviBuildBeginItemize(Token *tokens,int tokenCount,int *index,Font font,float fontSize,float spacing){
     RenderBox box = {0};
-    RenderBox children[32];
+    RenderBox *children = NULL;
+    int childCap = 0;
     int childCount = 0;
     Depth depth = {0};
     depthUpdate(&depth,tokens,index);
@@ -672,7 +697,7 @@ RenderBox rmviBuildBeginItemize(Token *tokens,int tokenCount,int *index,Font fon
             (*index)++; //skip begin
             RenderBox child ={0};
             child = rmviBuildItem(tokens, tokenCount,index,font, fontSize,spacing);
-            children[childCount++] = child;
+            RMVI_PUSH(children, childCount, childCap, RenderBox, child);
         }
         else{ 
             fprintf(stderr,
@@ -689,6 +714,7 @@ RenderBox rmviBuildBeginItemize(Token *tokens,int tokenCount,int *index,Font fon
     box.items = MemAlloc(sizeof(RenderBox) * childCount);
     memcpy(box.items, children, sizeof(RenderBox) * childCount);
     box.itemCount = childCount;
+    free(children);
     return box;
 }
 
@@ -704,7 +730,7 @@ RenderBox rmviMain2Box(Token *tokens,int tokenCount,Font font,float fontSize,flo
    
     else if (tokens[*index].type == TOKEN_BEGIN_ITEMIZE){
         box = rmviBuildBeginItemize(tokens, tokenCount,index,font, fontSize,spacing);
-        rmviFixChildPositionUnder(&box,INTERLIGNE_ITEM);
+        rmviFixChildPositionUnder(&box,1.0f);
     }
     else if(tokens[*index].type == TOKEN_LOAD_IMAGE){
         (*index)++;
@@ -737,8 +763,10 @@ RenderBox rmviMain2Box(Token *tokens,int tokenCount,Font font,float fontSize,flo
     else if (tokens[*index].type == TOKEN_LBRACE){
         box = rmviBuildBrace(tokens,index,tokenCount,font,fontSize,spacing);
     }
-    else if(tokens[*index].type == TOKEN_NEXTLINE){
-        
+    else if(tokens[*index].type == TOKEN_NEXTLINE){ //ici
+        box.token = &displaceToken;
+        box.size = fontSize;
+        (*index)++;
     }
     else{
         // met un espace après un mot si n'est pas après _ ou ^
@@ -756,6 +784,7 @@ RenderBox rmviMain2Box(Token *tokens,int tokenCount,Font font,float fontSize,flo
 }
 void rmviFixBoxPosition(RenderBox *boxes, RenderBox *box, int *index, int *count, Vector2 *cursor){
     if (box->token && box->token->type == TOKEN_DISPLACE){
+        
         rmviLineSkip(cursor,INTERLIGNE_ITEM, box->size, box->size);
         box->pos = Vector2Add( box->pos, *cursor);
         cursor->y += box->height; 
@@ -773,21 +802,20 @@ void rmviLineSkip(Vector2* cursor, float ratio, float fontSize, float height){
 int rmviBuildRenderBoxes(Token *tokens,int tokenCount,RenderBox *boxes,Font font,float fontSize,float spacing){
     Vector2 cursor = Vector2Zero();
     int count = 0;
-    int endLineCount = 0;
     int oldIndex = 0;
     float height = fontSize;
     RenderBox box = {0};
     for (int index = 0; index < tokenCount; ){
         height = max(height,box.height);
-        if(cursor.x > RATIO_LEN_TEXT){
+        if(cursor.x > RATIO_LEN_TEXT ){
             rmviLineSkip(&cursor,INTERLIGNE, fontSize,height);
-            endLineCount = count;
+            if (count !=0) boxes[count-1].isEndLine = true;
             height = fontSize;
         }
         if(tokens[index].type == TOKEN_NEXTLINE){
+            if (count !=0) boxes[count-1].isEndLine = true;
             rmviLineSkip(&cursor,INTERLIGNE, fontSize,height);
             (index)++;
-            endLineCount = count;
             height = fontSize;
         }
         box = rmviMain2Box(tokens,tokenCount,font,fontSize,spacing, &index);
@@ -821,11 +849,44 @@ void rmviDrawRenderBox(RenderBox *box,Vector2 basePos,Font font,float fontSize,f
     }
 }
 
-void rmviDrawRenderBoxes(RenderBox *boxes,int count,Vector2 basePos,Font font,float fontSize,float spacing,Color color){
-    for (int i = 0; i < count; i++){
+void rmviDrawRenderBoxes(RenderBox *boxes,int boxCount,Vector2 basePos,Font font,float fontSize,float spacing,Color color){
+    for (int i = 0; i < boxCount; i++){
         rmviDrawRenderBox(&boxes[i],basePos,font,fontSize,spacing,color);
     }
 }
+
+void rmviDrawRenderBoxesCentered(float *listWidth,RenderBox *boxes, int boxCount, Vector2 centerPos,Font font,float fontSize,float spacing,Color color){
+    Vector2 centeredPos = centerPos;
+    int endLine = 0;
+    for(int i =0; i< boxCount; i++){
+        centeredPos.x = centerPos.x - listWidth[endLine]/2;
+        rmviDrawRenderBox(&boxes[i],centeredPos,font,fontSize,spacing,color);
+        if(boxes[i].isEndLine) endLine ++;
+    }
+}
+
+int rmviCalcWidthLine(RenderBox *boxes, int boxCount, float **outListWidth){
+    float *listWidth = NULL;
+    float width = 0.0f;
+    int lineCap = 0;
+    int countLine = 0;
+
+    if (outListWidth) *outListWidth = NULL;
+    if (!boxes || boxCount <= 0 || !outListWidth) return 0;
+
+    for (int i = 0; i < boxCount; i++) {
+        width += boxes[i].width;
+
+        if (boxes[i].isEndLine || i == (boxCount - 1)) {
+            RMVI_PUSH(listWidth, countLine, lineCap, float, min(width, RATIO_LEN_TEXT));
+            width = 0.0f;
+        }
+    }
+
+    *outListWidth = listWidth;
+    return countLine;
+}
+
 
 
 void rmviGetCustomFont(const char *path, float fontSize) {
@@ -931,1065 +992,23 @@ static int copy_utf8_char(char *dst, const char *src) {
     return (len > 0) ? len : 1;
 }
 
-// Calcule la longeur d'un texte entre accolade, on peut en ouvrir et en fermer d'autre en interne
-// Permetra la recursivité ex : {{}} = 2
-// retoune la position de la dernière accolade fermante
-int rmviLenSymbole(const char *latex,int start, char openChar, char closeChar){
-    int count = 1;
-    int end = start;
-    while(count > 0 && latex[end] !='\0'){
-        if (latex[end] == openChar) count++;
-        else if (latex[end] == closeChar) count--;
-        end++;
-    }
-    end--;
-    return end;
-}
-
-int rmviLenAccolade(const char *latex,int start){
-    return rmviLenSymbole(latex, start, '{', '}');
-}
-// Calcule la longeur d'un texte entre parenthèse, on peut en ouvrir et en fermer d'autre en interne
-// Permetra la recursivité ex : (()) = 2
-int rmviLenParenthese(const char *latex,int start){
-    return rmviLenSymbole(latex, start, '(', ')');
-}
-
-int rmviLenCrochets(const char *latex,int start){
-    return rmviLenSymbole(latex, start, '[', ']');
-}
-
-int rmviLenItem(const char *latex, int start) {
-    int i = start;
-    int depth = 0; // profondeur d'imbrication des itemize
-    while (latex[i] != '\0') {
-        if (strncmp(&latex[i], "/begin(itemize)", 15) == 0) {
-            depth++;
-            i += 15;
-        }
-        else if (strncmp(&latex[i], "/end(itemize)", 13) == 0) {
-            if (depth == 0) {
-                // Fin de l'itemize courant
-                return i - start;
-            } else {
-                depth--;
-                i += 13;
-            }
-        }
-        else if (strncmp(&latex[i], "/item", 5) == 0 && depth == 0) {
-            // Prochain item au même niveau
-            return i - start;
-        }
-        else {
-            i++;
-        }
-    }
-    // Si on atteint la fin de la string
-    return i - start;
-}
-
-// Calcul la longeur que va prendre le text
-float rmviCalcTextWidth(const char *latex, Font font, float sizeText, float spacing){
-    float width = 0.0f;
-    float max_width = 0.0f;
-    int i = 0;
-    while (latex[i] != '\0') {
-        // exposant simple
-        if (latex[i] == '^' && latex[i+1] != '\0') {
-            if (latex[i+1] == '{') {
-                // Trouver la fin de l'accolade
-                int start = i + 2; // après "_{"
-                int end = rmviLenAccolade(latex, start);
-                int len = end - start;
-                char subBuf[64]; // buffer suffisant
-                strncpy(subBuf, &latex[start], len);
-                subBuf[len] = '\0';
-                float subSize = sizeText * RATIO_INDEX; 
-                float textWidth = rmviCalcTextWidth(subBuf, font, subSize, spacing);
-                width += textWidth;
-                i =  end + 1 ; // on saute tout jusqu'à '}'
-            } else {
-                char subBuf[8];
-                int consumed = copy_utf8_char(subBuf, &latex[i+1]);
-                float subSize = sizeText * RATIO_INDEX;
-                Vector2 ts = MeasureTextEx(font, subBuf, subSize, spacing);
-                width += ts.x;
-                i += 1 + consumed;
-            }
-        }
-        // indice simple
-        else if (latex[i] == '_' && latex[i+1] != '\0') {
-            if (latex[i+1] == '{') {
-                // Trouver la fin de l'accolade
-                int start = i + 2; // après "_{"
-                int end = rmviLenAccolade(latex, start);
-                int len = end - start;
-                char subBuf[64]; // buffer suffisant
-                strncpy(subBuf, &latex[start], len);
-                subBuf[len] = '\0';
-                float subSize = sizeText * RATIO_INDEX; 
-                float textWidth = rmviCalcTextWidth(subBuf, font, subSize, spacing);
-                width += textWidth;
-                i =  end + 1 ; // on saute tout jusqu'à '}'
-            } else {
-                // simple caractère après '_'
-                char subBuf[8];
-                int consumed = copy_utf8_char(subBuf, &latex[i+1]);
-                float subSize = sizeText * RATIO_INDEX;
-                Vector2 ts = MeasureTextEx(font, subBuf, subSize, spacing);
-                width += ts.x;
-                i += 1 + consumed;
-            }
-        }
-        // commande spéciale
-        else if (latex[i] == '/' && latex[i+1] != '\0') {
-            if (strncmp(&latex[i+1], "nu", 2) == 0) {
-                Vector2 ts = MeasureTextEx(font, "ν", sizeText, spacing);
-                width += ts.x;
-                i += 3; // /nu
-            }
-            RMVI_MEASURE_WIDTH_SYMBOLE("int", "∫")
-            RMVI_MEASURE_WIDTH_SYMBOLE("delta", "δ")
-            RMVI_MEASURE_WIDTH_SYMBOLE("Delta", "Δ")
-            RMVI_MEASURE_WIDTH_SYMBOLE("alpha", "α")
-            RMVI_MEASURE_WIDTH_SYMBOLE("beta", "β")
-            RMVI_MEASURE_WIDTH_SYMBOLE("gamma", "γ")
-            RMVI_MEASURE_WIDTH_SYMBOLE("Gamma", "Γ")
-            RMVI_MEASURE_WIDTH_SYMBOLE("theta", "θ")
-            RMVI_MEASURE_WIDTH_SYMBOLE("Theta", "Θ")
-            RMVI_MEASURE_WIDTH_SYMBOLE("pi", "π")
-            RMVI_MEASURE_WIDTH_SYMBOLE("Pi", "Π")
-            RMVI_MEASURE_WIDTH_SYMBOLE("sigma", "σ")
-            RMVI_MEASURE_WIDTH_SYMBOLE("Sigma", "Σ")
-            RMVI_MEASURE_WIDTH_SYMBOLE("phi", "φ")
-            RMVI_MEASURE_WIDTH_SYMBOLE("Phi", "Φ")
-            RMVI_MEASURE_WIDTH_SYMBOLE("psi", "ψ")
-            RMVI_MEASURE_WIDTH_SYMBOLE("Psi", "Ψ")
-            RMVI_MEASURE_WIDTH_SYMBOLE("omega", "ω")
-            RMVI_MEASURE_WIDTH_SYMBOLE("Omega", "Ω")
-            RMVI_MEASURE_WIDTH_SYMBOLE("neq", "≠")
-            RMVI_MEASURE_WIDTH_SYMBOLE("leq", "≤")
-            RMVI_MEASURE_WIDTH_SYMBOLE("geq", "≥")
-            RMVI_MEASURE_WIDTH_SYMBOLE("infinity", "∞")
-            else if (strncmp(&latex[i+1],"sum",3) == 0){
-                Vector2 ts = MeasureTextEx(font, "∑", BIG*sizeText, spacing);
-                width += ts.x;
-                i += 4; // skip "/sum"
-            }
-            else if(strncmp(&latex[i+1], "bar",3) == 0){
-                i += 4; // skip "/bar"
-                while (latex[i] == '{' || latex[i] == ' ') i++;
-                int start = i;
-                i = rmviLenAccolade(latex, start);
-                int len = i - start;
-                char *barText = (char*)malloc(len + 1);
-                memcpy(barText, &latex[start], len);
-                barText[len] = '\0';
-                width += rmviCalcTextWidth(barText, font, sizeText, spacing);
-                i++;
-                free(barText);
-            }
-            else if (strncmp(&latex[i+1], "exp{", 4) == 0) {
-                i += 5; // saute "/exp{"
-                int start = i;
-                while (latex[i] != '}' && latex[i] != '\0') i++;
-                int len = i - start;
-                float subSize = sizeText * RATIO_INDEX;
-                if (len > 0) {
-                    char *exp = (char*)malloc(len+1);
-                    memcpy(exp, &latex[start], len);
-                    exp[len] = '\0';
-                    width += rmviCalcTextWidth(exp, font, subSize, spacing);
-                    free(exp);
-                }
-                if (latex[i] == '}') i++;
-            }
-            else if(strncmp(&latex[i+1], "begin(", 6) == 0) {
-                char *env = rmviGetEnv(&i, latex);
-                width += rmviCalcBeginWidth(env, i, latex, font, sizeText, spacing);
-                i += rmviLenBegin(latex, i, env);
-            }
-            else if( latex[i+1] == '/'){
-                if(max_width < width) max_width = width;
-                width = 0;
-                i += 2; // skip "/"
-            }
-            else if(strncmp(&latex[i+1], "loadImage{",10) == 0){
-                // on ignore pour le calcul de largeur
-                i += 11; // après "/loadImage{"
-                int start = i;
-                while(latex[i] != '}' && latex[i] != '\0') i++;
-                if(latex[i] == '}') i++;
-            }
-            else if(strncmp(&latex[i+1], "frac",5) == 0){
-                i += 5; // après "/frac"
-                if (latex[i] == '{') i += 1; // après '{'
-                int start = i;
-                i = rmviLenAccolade(latex, start);
-                int len = i - start;
-                char *numerator = malloc(len + 1);
-                memcpy(numerator, &latex[start], len);
-                numerator[len] = '\0';
-                if (latex[i] == '}') i++;
-                if (latex[i] == '{'){
-                    i += 1; // après '{'
-                    start = i;
-                    i = rmviLenAccolade(latex, start);
-                    len = i - start;
-                    char *denominator = malloc(len + 1);
-                    memcpy(denominator, &latex[start], len);
-                    denominator[len] = '\0';
-                    if (latex[i] == '}') i++;
-                    // maintenant on a numerator et denominator
-                    width += max( rmviCalcTextWidth(numerator, font, sizeText, spacing),rmviCalcTextWidth(denominator, font, sizeText, spacing));
-                    free(denominator);
-                    free(numerator);
-                }
-            }
-            else {
-                Vector2 ts = MeasureTextEx(font, "/", sizeText, spacing);
-                width += ts.x;
-                i++;
-            }
-        }
-        else if (latex[i] == '\n') {
-            if(max_width < width) max_width = width;
-            width = 0;
-            i++;
-        }
-
-        // caractère normal
-        else {
-            char buf[8];
-            int consumed = copy_utf8_char(buf, &latex[i]);
-            Vector2 ts = MeasureTextEx(font, buf, sizeText, spacing);
-            width += ts.x;
-            i += consumed;
-        }
-    }
-    if(max_width < width) max_width = width;
-    return max_width;
-}
-char *rmviGetEnv(int *i, const char *latex){
-    *i += 7; // position après "/begin("
-    int start = *i;
-    int end = rmviLenParenthese(latex, start);
-    int len = end - start;
-    char *env = (char*)malloc(len + 1);
-    strncpy(env, &latex[start], len);
-    env[len] = '\0';
-    *i = end + 1; // i placé juste après '}'
-    return env;
-}
-
-float rmviCalcBeginWidth(const char *env, int start, const char *latex, Font font, float sizeText, float spacing) {
-    float widthMemory = 0;
-    if (strcmp(env, "itemize") == 0) {
-        const char *p = strstr(latex + start, "/item"); // commencer à partir de start
-        while (p && (strncmp(p, "/end(itemize)", 13) != 0)) {
-            p += 5; // skip "/item"
-            
-            // Récupérer le texte jusqu’au prochain /item ou /end(itemize)
-            const char *next = strstr(p, "/item");
-            const char *endEnv = strstr(p, "/end(itemize)");
-            if (!next || (endEnv && endEnv < next)) {
-                next = endEnv;
-            }
-            int len = next ? (next - p) : strlen(p);
-
-            char buf[256];
-            strncpy(buf, p, len);
-            buf[len] = '\0';
-
-            // Calcul largeur de CET item
-            float width = 0;
-            width += rmviCalcTextWidth("-", font, sizeText, spacing); // puce
-            width += sizeText * (RATIO_INDENT +1); // espace après la puce
-            width += rmviCalcTextWidth(buf, font, sizeText, spacing);
-
-            if (width > widthMemory) {
-                widthMemory = width;
-            }
-
-            p = next; // avancer
-        }
-    } 
-    else if(strcmp(env, "equation") == 0) {
-        // Pour l'instant, on traite equation comme du texte normal
-        State prevState = state;
-        state.interline = state.interline * MATH_INTERLINE_RATIO;
-        widthMemory = rmviCalcTextWidth(latex + start, font, state.sizeText, state.spacing);
-        state.interline = prevState.interline;
-    }
-    else {
-        printf("rmviCalcBeginWidth = bug (env=%s)\n", env);
-    }
-
-    return widthMemory;
-}
-
-
-float rmviCalcBeginHeight(const char *env, int start, const char *latex, Font font, float sizeText, float spacing, bool isNested) {
-    float height = 0.0f;
-    if (strcmp(env, "itemize") == 0) {
-        height += rmviCalcItemizeHeight(latex, start, font, sizeText, spacing, isNested);
-    }
-    else if(strcmp(env, "equation") == 0) {
-        height += rmviCalcEquationHeight(latex + start, font, sizeText, spacing);
-        
-    }
-    else {
-        printf("rmviCalcBeginHeight = bug (env=%s)\n", env);
-    }
-    return height;
-}
-float rmviCalcEquationHeight(const char *latex, Font font, float sizeText, float spacing) {
-    float height = 0.0f;
-    int i = 0;
-    while (latex[i] != '\0') {
-        // retour ligne → incrémenter hauteur
-        if (latex[i] == '/'){
-            if(latex[i+1] == '/'){
-                height += sizeText * INTERLIGNE;
-                i += 2;
-                while (latex[i] == '\n' || latex[i] == ' ') i++; // on compte pas deux fois le saut de ligne    
-            }
-            else if( strncmp(&latex[i+1], "frac",4) == 0){
-                // on ignore pour le calcul de hauteur
-                i += 5; // après "/frac"
-                if (latex[i] == '{') i += 1; // après '{'
-                int start = i;
-                i = rmviLenAccolade(latex, start);
-                char *numerator = malloc((size_t)(i - start + 1));
-                memcpy(numerator, &latex[start], (size_t)(i - start));
-                numerator[i - start] = '\0';
-                height += rmviCalcTextHeight(numerator, font, sizeText, spacing, false);
-                free(numerator);
-                if (latex[i] == '}') i++;
-                if (latex[i] == '{'){
-                    i += 1; // après '{'
-                    start = i;
-                    i = rmviLenAccolade(latex, start);
-                    char *denominator = malloc((size_t)(i - start + 1));
-                    memcpy(denominator, &latex[start], (size_t)(i - start));
-                    denominator[i - start] = '\0';
-                    height += rmviCalcTextHeight(denominator, font, sizeText, spacing, false);
-                    free(denominator);
-                    if (latex[i] == '}') i++;
-                }
-            }
-            else {
-                // unknown /command: ignore it for height calculation
-                i++;
-            }
-        }
-        else {
-            i++;
-        }
-    }
-    return max(sizeText * INTERLIGNE_ITEM, height);
-}
-float rmviCalcItemizeHeight(const char *body, int start, Font font, float sizeText, float spacing, bool isNested) {
-    const float lineHeight = sizeText * INTERLIGNE_ITEM;
-    const float bulletGap  = 10.0f;
-    float height = lineHeight; // Pour commencer
-    for (int i = 0; body[i] != '\0'; ) {
-        if(strncmp(&body[i], "/item", 5) == 0){
-            i += 5; // saute "/item"
-            if(strncmp(&body[i], "[", 1) == 0) {
-                i++; // saute "["
-                int end = rmviLenCrochets(body, i);
-                i = end + 1; // i placé juste après ']'
-            }
-            int itemLength = rmviLenItem(body, i);
-            const char *bodyStart = body + i;
-            const char *bodyEnd   = bodyStart + itemLength;
-            // On fabrique une string indépendante pour le body
-            char *body_item = (char*)malloc((size_t)(itemLength + 1));
-            memcpy(body_item, bodyStart, (size_t)itemLength);
-            body_item[itemLength] = '\0';
-            // ici il faudrait uniquement fournir ce qui suit après le item
-            height +=rmviCalcTextHeight(body_item, font, sizeText, spacing, true);
-            i += itemLength;
-        }
-        else if(strncmp(&body[i], "/begin(", 7) == 0){
-            char *env = rmviGetEnv(&i, body);
-            int bodyLen  = rmviLenBegin(body, i, env);
-            const char *bodyBeginStart = body + i;
-            // On fabrique une string indépendante pour le body
-            char *bodyBegin = (char*)malloc((size_t)(bodyLen + 1));
-            memcpy(bodyBegin, bodyBeginStart, (size_t)bodyLen);
-            bodyBegin[bodyLen] = '\0';
-            height += rmviCalcBeginHeight(env, i, bodyBegin, font, sizeText, spacing, true);
-            i += bodyLen;
-            free(bodyBegin);
-        }
-        /*else if(strncmp(&body[i], "/end(itemize)", 13) == 0){
-            // ici ca devrait être fini du coup ?
-            i += 13; // saute "/end(itemize)"
-            pos->x -= initStart.x; // reset x to initial start
-            pos->y += lineHeight; // saut de ligne après la fin de l'itemize
-        }*/
-        else{
-            i++;
-        }
-    }
-    return height;
-}
-
-
-float rmviCalcTextHeight(const char *latex, Font font, float sizeText, float spacing, bool isNested) {
-    float height = sizeText * INTERLIGNE;
-    int i = 0;
-    while (latex[i] != '\0') {
-        // retour ligne → incrémenter hauteur
-        if (latex[i] == '/'){
-            if (strncmp(&latex[i+1], "begin(", 6) == 0) {
-                char *env = rmviGetEnv(&i, latex);
-                height += rmviCalcBeginHeight(env, i, latex, font, sizeText, spacing, isNested);
-                i += rmviLenBegin(latex, i, env);
-            }
-            else if(latex[i+1] == '/'){
-                height += sizeText * INTERLIGNE;
-                i += 2;
-                while (latex[i] == '\n' || latex[i] == ' ') i++; // on compte pas deux fois le saut de ligne
-                
-            }
-            else {
-                // unknown /command: ignore it for height calculation
-                i++;
-            }
-        }
-        else if (latex[i] == '\n') {
-            height += sizeText * INTERLIGNE;
-            i++;
-        }
-        else {
-            i++;
-        }
-    }
-    return height;
-}
 
 void rmviWriteLatexLeftCenteredClassic(const char *latex, Vector2 *position) {
     rmviWriteLatexLeftCentered(latex, position, SIZE_TEXT, SIZE_SPACING, WHITE, mathFont);
 }
 // on va centrée en x mais pas en y
 void rmviWriteLatexLeftCentered(const char *latex, Vector2 *position, float sizeText, float spacing, Color color, Font font) {
-    if (!latex || !position) return;
-    Vector2 initpos = *position;
-    float textWidth  = rmviCalcTextWidth(latex, font, sizeText, spacing);
-    float textHeight = rmviCalcTextHeight(latex, font, sizeText, spacing, false);
-    // position de départ centrée
-    position->x -= textWidth  / 2.0f;
-    //position->y -= textHeight / 2.0f;
-    // écriture
-    rmviWriteLatex(latex, position, sizeText, spacing, color, font);
-    position->x = initpos.x;
-    position->y = position->y + sizeText * INTERLIGNE;
+    printf("Fonction rmviWriteLatexLeftCentered à implémenter");
+    exit(EXIT_FAILURE);
 }
 // Dessine le text comme si on ecrivait en latex mais il faut remplacer les backslash par /
 void rmviWriteLatex(const char *latex, Vector2 *position, float sizeText, float spacing, Color color, Font font) {
-    if (!latex || !position) return;
-    Vector2 initPos = *position;
-
-    // You might want x,y to be top-left or center — adapt before calling.
-    Vector2 ts;
-    for (int i = 0; latex[i] != '\0'; ) {
-        // handle /commands like /nu or /exp{...}
-        //switch case
-        if(latex[i] == '/' && latex[i+1] == '/') {
-                position->y += sizeText * INTERLIGNE; // interline, ajustable
-                position->x = initPos.x;       // reset to line start (you can pre-center per-line if needed)
-                if(latex[i+2] == ' ') i++;
-                i += 2;
-        }
-        // newline
-        else if (latex[i] == '\n') {
-            position->y += sizeText * INTERLIGNE; // interline, ajustable
-            position->x = initPos.x;       // reset to line start (you can pre-center per-line if needed)
-            i++;
-        }
-
-        else if (latex[i] == '/' && latex[i+1] != '\0'){
-            int k = 0;
-            const char *kstart = &latex[i + 1];
-            while (kstart[k] != ' ' && kstart[k] != '\0' &&
-                kstart[k] != '/' && kstart[k] != '{' && kstart[k] != '(' &&
-                kstart[k] != '}' && kstart[k] != ')'  && kstart[k] != '\n' &&
-                kstart[k] != '^' && kstart[k] != '_')
-            {
-                k++;
-            }
-
-            bool handled = false;
-            Vector2 ts = {0};
-            switch (k)
-            {   
-                case 0:
-                    DrawTextEx(font, "/", *position, sizeText, spacing, color);
-                    ts = MeasureTextEx(font, "/", sizeText, spacing);
-                    handled = true;
-                    break;
-                case 1:
-                    char tmp[16];
-                    snprintf(tmp, sizeof(tmp), "%.*s", k, kstart);
-                    DrawTextEx(font, tmp, *position, sizeText, spacing, color);
-                    ts = MeasureTextEx(font, tmp, sizeText, spacing);
-                    handled = true;
-                    break;
-                
-                case 2:
-                    if (strncmp(kstart, "nu", k) == 0){
-                        DrawTextEx(font, "ν", *position, sizeText, spacing, color);
-                        ts = MeasureTextEx(font, "ν", sizeText, spacing);
-                        handled = true;
-                    }
-                    break;
-                case 3:
-                    if (strncmp(kstart, "int", k) == 0)
-                    {
-                        DrawTextEx(font, "∫", *position, sizeText, spacing, color);
-                        ts = MeasureTextEx(font, "∫", sizeText, spacing);
-                        handled = true;
-                    }
-                    else if(strncmp(kstart,"neq",k) == 0){
-                        DrawTextEx(font, "≠", *position, sizeText, spacing, color);
-                        ts = MeasureTextEx(font, "≠", sizeText, spacing);
-                        handled = true;
-                    }
-                    else if(strncmp(kstart,"sum",k) == 0){
-                        initPos = *position;
-                        position->y -= (sizeText *BIG - sizeText)/2.0f;
-                        DrawTextEx(font, "Σ", *position, BIG * sizeText, spacing, color);
-                        ts = MeasureTextEx(font, "Σ", BIG * sizeText, spacing);
-                        // traitement ^_ après
-                        if(latex[i+4] == '^' || latex[i+4] == '_'){
-                            int j = i + 4;
-                            while(latex[j] == '^' || latex[j] == '_'){
-                                bool isSuper = (latex[j] == '^');
-                                j++;
-                                if (latex[j] == '{'){
-                                    j++; // après la {
-                                    int start = j;
-                                    j = rmviLenAccolade(latex, start);
-                                    int len = j - start;
-                                    if (len > 0){
-                                        char *sub = malloc(len + 1);
-                                        memcpy(sub, &latex[start], len);
-                                        sub[len] = '\0';
-                                        float subSize = sizeText * 0.7f;
-                                        Vector2 subPos;
-                                        if (isSuper){
-                                            subPos = (Vector2){ position->x + ts.x*0.7, position->y - BIG * sizeText };
-                                        }
-                                        else{
-                                            subPos = (Vector2){ position->x + ts.x * 0.7, position->y + BIG * sizeText };
-                                        }
-                                        rmviWriteLatexLeftCentered(sub, &subPos, subSize, spacing, color, font);
-                                        free(sub);
-                                    }
-                                    if (latex[j] == '}') j++;
-                                }
-                                else{
-                                    char subBuf[8];
-                                    int consumed = copy_utf8_char(subBuf, &latex[j]);
-                                    float subSize = sizeText * 0.7f;
-                                    Vector2 subPos;
-                                    if (isSuper){
-                                            subPos = (Vector2){ position->x + ts.x * 0.7, position->y - BIG * sizeText };
-                                        }
-                                        else{
-                                            subPos = (Vector2){ position->x + ts.x * 0.7, position->y + BIG * sizeText };
-                                        }
-                                    rmviWriteLatexLeftCentered(subBuf, &subPos, subSize, spacing, color, font);
-                                    j += consumed;
-                                }
-                            }
-                            i = j - k -1;
-                        }
-                        handled = true;
-                    }
-                    else if (strncmp(kstart, "exp", k) == 0){
-                        handled = true;
-                        if (latex[i+4] == '{'){
-                            i += 5; // après "/exp{"
-                            int start = i;
-                            i = rmviLenAccolade(latex, start);
-                            int len = i - start;
-                            if (len > 0){
-                                char *exp = malloc(len + 1);
-                                memcpy(exp, &latex[start], len);
-                                exp[len] = '\0';
-                                float expSize = sizeText * 0.7f;
-                                Vector2 expPos = { position->x, position->y - sizeText * RATIO_INDEX_UP };
-                                rmviWriteLatex(exp, &expPos, expSize, spacing, color, font);
-                                ts = MeasureTextEx(font, exp, expSize, spacing);
-                                free(exp);
-                            }
-                            if (latex[i] == '}') i++;
-                            i -= k + 1;
-                        }
-                        else{
-                            DrawTextEx(font, "exp", *position, sizeText, spacing, color);
-                            ts = MeasureTextEx(font, "exp", sizeText, spacing);
-                        }
-                    }
-                    else if (strncmp(kstart, "phi", k) == 0){
-                        DrawTextEx(font, "φ", *position, sizeText, spacing, color);
-                        ts = MeasureTextEx(font, "φ", sizeText, spacing);
-                        handled = true;
-                    }
-                    else if(strncmp(kstart,"bar",k) == 0){
-                        handled = true;
-                        if (latex[i+4] == '{'){
-                            i += 5; // après "/bar{"
-                            int start = i;
-                            i = rmviLenAccolade(latex, start);
-                            int len = i - start;
-                            if (len > 0){
-                                char *bar = malloc(len + 1);
-                                memcpy(bar, &latex[start], len);
-                                bar[len] = '\0';
-                                Vector2 positionBar = { position->x, position->y};
-                                rmviWriteLatex(bar, position,sizeText, spacing, color, font);
-                                Vector2 tsBar = MeasureTextEx(font, bar, sizeText, spacing);
-                                // dessiner la barre au dessus
-                                DrawLineEx((Vector2){positionBar.x, positionBar.y - spacing/4}, (Vector2){positionBar.x + tsBar.x, positionBar.y - spacing/4}, sizeText/20, color);
-                                ts = (Vector2) {0,0};
-                                free(bar);
-                            }
-                            if (latex[i] == '}') i++;
-                            i -= k + 1;
-                        }
-                    }
-                    break;
-                case 4:
-                    if(strncmp(kstart,"frac",k) == 0){
-                        handled = true;
-                        if (latex[i+5] == '{'){
-                            i += 6; // après "/frac{"
-                            int start = i;
-                            i = rmviLenAccolade(latex, start);
-                            int len = i - start;
-                            char *numerator = malloc(len + 1);
-                            memcpy(numerator, &latex[start], len);
-                            numerator[len] = '\0';
-                            if (latex[i] == '}') i++;
-                            if (latex[i] == '{'){
-                                i += 1; // après '{'
-                                start = i;
-                                i = rmviLenAccolade(latex, start);
-                                len = i - start;
-                                char *denominator = malloc(len + 1);
-                                memcpy(denominator, &latex[start], len);
-                                denominator[len] = '\0';
-                                if (latex[i] == '}') i++;
-                                // maintenant on a numerator et denominator
-                                rmviWriteFraction(numerator, denominator, position, sizeText, spacing, color, font);
-                                free(denominator);
-                                free(numerator);
-                            }
-                        }
-                        else{
-                            printf("rmviWriteLatex: /frac missing {\n");
-                        }
-                        i -= k + 1;
-                    }
-                case 5:
-                    if (strncmp(kstart, "theta", k) == 0){
-                        i++;
-                        DrawTextEx(font, "θ", *position, sizeText, spacing, color);
-                        ts = MeasureTextEx(font, "θ", sizeText, spacing);
-                        handled = true;
-                    }
-                    else if(strncmp(kstart, "delta",k) == 0){
-                        i++;
-                        DrawTextEx(font, "δ", *position, sizeText, spacing, color);
-                        ts = MeasureTextEx(font, "δ", sizeText, spacing);
-                        handled = true;
-                    }
-                    else if(strncmp(kstart,"Delta",k) == 0){
-                        i++;                        // sauter l'espace si y'en a une
-                        DrawTextEx(font, "Δ", *position, sizeText, spacing, color);
-                        ts = MeasureTextEx(font, "Δ", sizeText, spacing);
-                        handled = true;
-                    }
-                    else if (strncmp(kstart, "begin", k) == 0)
-                    {
-                        handled = true;
-                        char *env = rmviGetEnv(&i, latex);
-                        int bodyFullLen = rmviLenBegin(latex, i, env); //donne la position à la fin de /end(env)
-                        int bodyLen = bodyFullLen - (6 + strlen(env)); // longueur du corps entre /begin(env) et /end(env)
-                        char *body = malloc(bodyLen + 1);
-                        memcpy(body, latex + i, bodyLen);
-                        body[bodyLen] = '\0';
-                        // body fini par /end(env) faudrait modifier ca mais il commence après le /begin(env)
-                        rmviWriteBegin(env, body, position, initPos,
-                                    sizeText, spacing, color, font, false);
-                        i += bodyFullLen;
-                        free(body);
-                        i -= k + 1;
-                    }
-                    break;
-                case 8:
-                    if(strncmp(kstart,"footnote",k) == 0){
-                        // on ignore la footnote pour l'instant
-                        handled = true;
-                        i += k + 2; // après "/footnote{"
-                        int start = i;
-                        int end = rmviLenAccolade(latex, start);
-                        int len = end - start;
-                        Vector2 positionFootNote = {GetScreenWidth()*1/15, GetScreenHeight() - sizeText*2.0f};
-                        if (len > 0 && len < 255) {
-                            char tmp[256];
-                            snprintf(tmp, sizeof(tmp), "%.*s", len, &latex[start]);
-                            DrawTextEx(font, tmp, positionFootNote, sizeText*0.75, spacing*0.75, color);
-                        }
-                        i = end-k +1;
-                    }
-                    break;
-                case 9:
-                    if(strncmp(kstart,"loadImage",k) == 0 || strncmp(kstart,"loadimage",k) == 0){
-                        bool hasPosition = false;
-                        Vector2 imgPos;
-                        handled = true;
-                        i += k+2; // après "/loadImage("
-                        int start = i;
-                        int end = rmviLenAccolade(latex, start);
-                        int len = end - start;
-                        char imgPath[256];
-                        strncpy(imgPath, &latex[start], len);
-                        imgPath[len] = '\0';
-                        end = rmviHasPosition(latex, end+1, &hasPosition, &imgPos);
-                        hasPosition ? rmviLoadImage(imgPath, imgPos, sizeText / SIZE_TEXT) : 
-                            rmviLoadImage(imgPath, (Vector2){position->x + sizeText, position->y + sizeText / 2}, sizeText / SIZE_TEXT);
-                        Vector2 tsImg = {sizeText * 2.0f, sizeText * 1.0f};
-                        ts.x = 0;
-                        position->x += -MeasureTextEx(font, " ", sizeText, spacing).x;
-                        i = end - k ;
-                    }
-                }
-                if (!handled){
-                    DrawTextEx(font, " ", *position, sizeText, spacing, color);
-                    ts = MeasureTextEx(font, " ", sizeText, spacing);
-                }
-                position->x += ts.x;
-                i += k + 1;
-            }
-
-        // exposant '^' (suivi d'un seul "caractère" UTF-8)
-        else if (( latex[i] == '^' || latex[i] == '_') && latex[i+1] != '\0') {
-            Vector2 ts, subPos;
-            if (latex[i+1] == '{') {
-                // Trouver la fin de l'accolade
-                int start = i + 2; // après "^{"
-                int end = rmviLenAccolade(latex, start);
-                int len = end - start;
-                char subBuf[64]; // buffer suffisant
-                strncpy(subBuf, &latex[start], len);
-                subBuf[len] = '\0';
-                float subSize = sizeText * RATIO_INDEX;
-
-                if (latex[i] == '^') {
-                    subPos = (Vector2){ position->x,
-                                        position->y - sizeText * RATIO_INDEX_UP };
-                } else {
-                    subPos = (Vector2){ position->x,
-                                        position->y + sizeText * RATIO_INDEX_DOWN };
-                }
-                rmviWriteLatex(subBuf, &subPos, subSize, spacing, color, font);
-                ts = MeasureTextEx(font, subBuf, subSize, spacing);
-                i =  end + 1 ; // on saute tout jusqu'à '}'
-            } else {
-                char subBuf[8];
-                int consumed = copy_utf8_char(subBuf, &latex[i+1]);
-                float subSize = sizeText * RATIO_INDEX;
-                if (latex[i] == '^') {
-                    subPos = (Vector2){ position->x,
-                                        position->y - sizeText * RATIO_INDEX_UP };
-                } else {
-                    subPos = (Vector2){ position->x,
-                                        position->y + sizeText * RATIO_INDEX_DOWN };
-                }
-                rmviWriteLatex(subBuf, &subPos, subSize, spacing, color, font);
-                ts = MeasureTextEx(font, subBuf, subSize, spacing);
-                i += 1 + consumed;
-            }
-            if((latex[i] == '_' || latex[i] == '^') && latex[i] != '\0'){
-                if (latex[i+1] == '{') {
-                    // Trouver la fin de l'accolade
-                    int start = i + 2; // après "_{"
-                    int end = rmviLenAccolade(latex, start);
-                    int len = end - start;
-                    char subBuf[64]; // buffer suffisant
-                    strncpy(subBuf, &latex[start], len);
-                    subBuf[len] = '\0';
-                    float subSize = sizeText * RATIO_INDEX;
-                    if (latex[i] == '^') {
-                        subPos = (Vector2){ position->x,
-                                            position->y - sizeText * RATIO_INDEX_UP };
-                    } else {
-                        subPos = (Vector2){ position->x,
-                                            position->y + sizeText * RATIO_INDEX_DOWN };
-                    }
-                    rmviWriteLatex(subBuf, &subPos, subSize, spacing, color, font);
-                    ts.x = max(ts.x,MeasureTextEx(font, subBuf, subSize, spacing).x);
-                    i =  end + 1 ; // on saute tout jusqu'à '}'
-                } else {
-                    // simple caractère après '_'
-                    char subBuf[8];
-                    int consumed = copy_utf8_char(subBuf, &latex[i+1]);
-                    float subSize = sizeText * RATIO_INDEX;
-                    if (latex[i] == '^') {
-                        subPos = (Vector2){ position->x,
-                                            position->y - sizeText * RATIO_INDEX_UP };
-                    } else {
-                        subPos = (Vector2){ position->x,
-                                            position->y + sizeText * RATIO_INDEX_DOWN };
-                    }
-                    rmviWriteLatex(subBuf, &subPos, subSize, spacing, color, font);
-                    ts.x = max(ts.x,MeasureTextEx(font, subBuf, subSize, spacing).x);
-                    i += 1 + consumed;
-                }
-            }
-            position->x += ts.x;
-            
-        }
-        // normal character (may be UTF-8 multibyte)
-        else {
-            char ch[8];
-            int consumed = copy_utf8_char(ch, &latex[i]);
-            DrawTextEx(font, ch, *position, sizeText, spacing, color);
-            Vector2 ts = MeasureTextEx(font, ch, sizeText, spacing);
-            position->x += ts.x;
-            i += consumed;
-        }
-    }
+    Token tokens[512];
+    int tokenCount = rmviTokenizeLatex(latex,tokens, 512);
+    RenderBox boxes[256];
+    int boxCount = rmviBuildRenderBoxes(tokens, tokenCount, boxes, font, sizeText, spacing);
+    rmviDrawRenderBoxes(boxes, boxCount, *position, font, sizeText, spacing, color);
 }
-
-void rmviWriteFraction(const char *numerator, const char *denominator, Vector2 *position, float sizeText, float spacing, Color color, Font font){
-    // Calculer la largeur maximale entre numérateur et dénominateur
-    float numWidth = rmviCalcTextWidth(numerator, font, sizeText, spacing);
-    float denWidth = rmviCalcTextWidth(denominator, font, sizeText, spacing);
-    float fracWidth = (numWidth > denWidth) ? numWidth : denWidth;
-    Vector2 initPosFrac = *position;
-    Vector2 numPos = {
-        position->x + (fracWidth - numWidth) / 2.0f,
-        position->y - sizeText * 0.6f
-    };
-    rmviWriteLatex(numerator, &numPos, sizeText, spacing, color, font);
-
-    // Dessiner la ligne de fraction
-    DrawLineEx((Vector2){position->x, position->y + sizeText * 0.7f}, (Vector2){position->x + fracWidth, position->y + sizeText * 0.7f}, sizeText * RATIO_LINE, color);
-    // Positionner le dénominateur
-    Vector2 denPos = {
-        position->x + (fracWidth - denWidth) / 2.0f,
-        position->y + sizeText
-    };
-    rmviWriteLatex(denominator, &denPos, sizeText, spacing, color, font);
-    // Mettre à jour la position pour après la fraction
-    position->x += initPosFrac.x + fracWidth + MeasureTextEx(font, " ", sizeText, spacing).x;
-    position->y = initPosFrac.y;
-}
-
-
-void rmviLoadImage(const char *path, Vector2 position, float scale){
-    static Texture2D texture = {0};
-    static char currentPath[512] = {0};
-    // Charger seulement si le chemin change
-    if (strcmp(currentPath, path) != 0){
-        if (texture.id != 0)
-            UnloadTexture(texture);
-
-        texture = LoadTexture(path);
-        if (texture.id == 0)
-        {
-            TraceLog(LOG_ERROR, "rmviLoadImage: failed to load %s", path);
-            return;
-        }
-
-        strcpy(currentPath, path);
-    }
-    Vector2 size = {
-        texture.width * scale,
-        texture.height * scale
-    };
-    Vector2 drawPos = {
-        position.x - size.x / 2.0f,
-        position.y - size.y / 2.0f
-    };
-    DrawTextureEx(texture, drawPos, 0.0f, scale, WHITE);
-}
-
-int rmviHasPosition(const char *latex, int startIndex, bool *hasPosition,  Vector2 *imgPos){
-    *hasPosition = false;
-    *imgPos = (Vector2){0};
-    int i = startIndex;
-    int j = 0;
-    // skip spaces
-    while (latex[i + j] == ' ') j++;
-    // pas de position
-    if (latex[i + j] != '{')
-        return startIndex;
-    // ---- parse X ----
-    int start = i + j + 1; // après '{'
-    int end = rmviLenAccolade(latex, start);
-    int len = end - start;
-    if (len <= 0 || len >= 63)
-        return startIndex;
-    char tmp[64];
-    memcpy(tmp, &latex[start], len);
-    tmp[len] = '\0';
-    (*imgPos).x = strtof(tmp, NULL);
-    // ---- chercher Y ----
-    j = 1;
-    while (latex[end + j] == ' ') j++;
-    if (latex[end + j] != '{') {
-        *hasPosition = true;
-        return end + j;
-    }
-    // ---- parse Y ----
-    start = end + j + 1;
-    end = rmviLenAccolade(latex, start);
-    len = end - start;
-    if (len <= 0 || len >= 63)
-        return startIndex;
-    memcpy(tmp, &latex[start], len);
-    tmp[len] = '\0';
-    (*imgPos).y = strtof(tmp, NULL);
-    *hasPosition = true;
-    return end;
-}
-
-
-
-void rmviWriteBegin(const char *env, const char *body, Vector2 *pos, Vector2 initPos, float sizeText, float spacing, Color color, Font font, bool isNested){
-    if (strcmp(env, "itemize") == 0) {
-        pos->x = initPos.x;
-        rmviWriteItemize(body, pos, sizeText, spacing, color, font);
-        if (!isNested) {
-            pos->y += sizeText * INTERLIGNE_ITEM;  // espacement entre environnements
-        }
-    }
-    else if (strcmp(env, "equation") == 0) {
-        // centrer l'équation
-
-        float textWidth = rmviCalcTextWidth(body, font, sizeText, spacing);
-        pos->x = initPos.x + (GetScreenWidth() - textWidth) / 2.0f;
-        rmviWriteEquation(body, pos, sizeText, spacing, color, font);
-        if (!isNested) {
-            pos->y += sizeText * INTERLIGNE;  // espacement entre environnements
-        }
-    }
-    else {
-        rmviWriteLatex(body, pos, sizeText, spacing, color, font);
-    }
-}
-
-
-void rmviWriteEquation(const char *body, Vector2 *pos, float sizeText, float spacing, Color color,Font font){
-    Vector2 lineStart = *pos;
-    rmviWriteLatex(body, pos, sizeText, spacing, color, font);
-    pos->x = lineStart.x;
-    pos->y += sizeText * INTERLIGNE;
-}
-
-
-void rmviWriteItemize(const char *body, Vector2 *pos, float sizeText, float spacing, Color color, Font font){
-    Vector2 initStart = *pos;
-    const float indentStep = sizeText * RATIO_INDENT;
-    const float lineHeight = sizeText * INTERLIGNE_ITEM;
-    const float bulletGap  = 10.0f;
-    pos->x += indentStep;
-    for (int i = 0; body[i] != '\0'; ) {
-        if(strncmp(&body[i], "/item", 5) == 0){
-            pos->y += lineHeight;
-            i += 5; // saute "/item"
-            if(strncmp(&body[i], "[", 1) == 0) {
-                i++; // saute "["
-                int end = rmviLenCrochets(body, i);
-                int len = end - i;
-                char *crochet = (char*)malloc(len + 1);
-                strncpy(crochet, &body[i], len);
-                crochet[len] = '\0';
-                i = end + 1; // i placé juste après ']'
-                rmviWriteLatex(crochet, pos, sizeText, spacing, color, font);
-                // Utiliser 'crochet' ici
-                free(crochet);
-            }
-            else{
-                rmviWriteLatex("-", pos, sizeText, spacing, color, font);
-            }
-            int itemLength = rmviLenItem(body, i);
-            const char *bodyStart = body + i;
-            const char *bodyEnd   = bodyStart + itemLength;
-            // On fabrique une string indépendante pour le body
-            char *body_item = (char*)malloc((size_t)(itemLength + 1));
-            memcpy(body_item, bodyStart, (size_t)itemLength);
-            body_item[itemLength] = '\0';
-            // ici il faudrait uniquement fournir ce qui suit après le item
-            rmviWriteLatex(body_item, pos, sizeText, spacing, color, font);
-            pos->x = initStart.x + indentStep; // reset x position for next item
-            i += itemLength;
-        }
-        else if(strncmp(&body[i], "/begin(", 7) == 0){
-            char *env = rmviGetEnv(&i, body);
-            int bodyLen  = rmviLenBegin(body, i, env);
-            const char *bodyBeginStart = body + i;
-            // On fabrique une string indépendante pour le body
-            char *bodyBegin = (char*)malloc((size_t)(bodyLen + 1));
-            memcpy(bodyBegin, bodyBeginStart, (size_t)bodyLen);
-            bodyBegin[bodyLen] = '\0';
-            Vector2 posItem = { initStart.x + indentStep , pos->y };
-            rmviWriteBegin(env, bodyBegin, pos, posItem, sizeText, spacing, color, font, true);
-            pos->x = initStart.x + indentStep;
-            i += bodyLen;
-        }
-        else if(strncmp(&body[i], "/end(itemize)", 13) == 0){
-            // ici ca devrait être fini du coup ?
-            i += 13; // saute "/end(itemize)"
-            pos->x = initStart.x; // reset x to initial start
-        }
-        else{
-            // on ne devrait pas arriver là
-            //rmviWriteLatex(&body[i], *pos, sizeText, spacing, color, font);
-            i++;
-        }
-    }
-    pos->x = initStart.x;
-    pos->y += lineHeight; // saut de ligne après la fin de l'itemize
-}
-
-// on donne le nombre de caractère pour arriver à la sortie du /end(env)
-int rmviLenBegin(const char *latex, int start, const char *env) {
-    int depth = 1; // on part déjà avec 1 /begin(env)
-    const char *p = latex + start;
-
-    char beginTag[80];
-    char endTag[80];
-    snprintf(beginTag, sizeof(beginTag), "/begin(%s)", env);
-    snprintf(endTag, sizeof(endTag), "/end(%s)", env);
-
-    while (*p && depth > 0) {
-        if (strncmp(p, beginTag, strlen(beginTag)) == 0) {
-            depth++;
-            p += strlen(beginTag);
-        }
-        else if (strncmp(p, endTag, strlen(endTag)) == 0) {
-            depth--;
-            p += strlen(endTag);
-        }
-        else {
-            p++; // avancer caractère par caractère
-        }
-    }
-
-    // Retourne le nombre de caractères lus jusqu’à la fermeture
-    return (int)(p - (latex + start));
-}
-
-
 
 // coupe une chaine de caractère séparé par par de // ou \n en list de chaine de caractère
 char **rmviSplitText(const char *text) {
@@ -2046,6 +1065,7 @@ char **rmviSplitText(const char *text) {
     result[count] = NULL;
     return result;
 }
+
 
 void rmviWriteAnimText(const char *text, Vector2 position, float size, Color color,
                        int frameStart, int currentFrame) {

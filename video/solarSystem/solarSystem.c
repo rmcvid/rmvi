@@ -10,7 +10,7 @@
 #define MAX_LINE 1024
 #define MAX_PARAGRAPH 8192
 #define SIZE_TEXT 40.0f
-#define SIZE_SPACING SIZE_TEXT/5.0f
+#define SIZE_SPACING SIZE_TEXT/20.0f
 // /loadvideo{C:\Users\ryanm\Documents\Rmvi\animation\video\solarSystem\Image\decompte}{decompte}
 
 typedef struct{
@@ -294,13 +294,13 @@ int bm_visual_main(void)
                 oldCountRight = actualRep.countRight;
                 paragraph = readScenario(HERE_PATH "presentation.txt", actualRep.countRight);
                 if( paragraph != NULL){
-                    paragraphHeight = rmviCalcTextHeight(paragraph, mathFont, SIZE_TEXT, SIZE_SPACING, true);
-                    paragraphPos = (Vector2) { CENTER.x, CENTER.y - paragraphHeight/2.0f };
+                    //paragraphHeight = rmviCalcTextHeight(paragraph, mathFont, SIZE_TEXT, SIZE_SPACING, true);
+                    paragraphPos = (Vector2) { CENTER.x/5, CENTER.y/2};
                 } 
             }
             
             Vector2 drawPos = paragraphPos;
-            rmviWriteLatexLeftCentered(paragraph, &drawPos, SIZE_TEXT, SIZE_SPACING, WHITE, mathFont);    
+            rmviWriteLatex(paragraph, &drawPos, SIZE_TEXT, SIZE_SPACING, WHITE, mathFont);    
             }
         EndTextureMode();
         rmviDraw();
@@ -321,17 +321,13 @@ int isBlankLine(const char *line){
     }
     return 1;
 }
-char* readScenario(const char *path, int countRight)
-{
+char* readScenario(const char *path, int countRight){
     FILE *file = fopen(path, "r");
     if (!file) return NULL;
-
     char line[MAX_LINE];
     char temp[MAX_PARAGRAPH] = {0};
-
     int currentParagraph = 0;
     int hasContent = 0;
-
     while (fgets(line, sizeof(line), file))
     {
         if (isBlankLine(line))
@@ -358,8 +354,6 @@ char* readScenario(const char *path, int countRight)
                 strcat(temp, line);
         }
     }
-
-    // Fin de fichier
     if (hasContent && currentParagraph == countRight)
     {
         char *result = malloc(strlen(temp) + 1);

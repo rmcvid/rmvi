@@ -1,4 +1,4 @@
-L'idée première est de faire des vidéos de vulgarisation scientifique.
+L'idée première est de faire des vidéos de vulgarisation scientifique. //
 Pour ça on a besoin d'avoir un cadre dans lequel on peut créer des animations.
 
 Le cadre qu'on choisit est le C. Il est bas niveau permettant des simulations
@@ -6,18 +6,18 @@ physiques ambitieuses.
 
 Les nécessités
 /begin(itemize)
-/item Création de l'environnement de scène et rendu visuel ==> Raylib et OpenGL
+/item Création de l'environnement de scène et rendu visuel ==>/ Raylib et OpenGL
 /item Gestion de l'audio avec miniaudio et raudio
-/item Création des vidéos en enregistrant les frame de la scène et superposition du son
+/item Création des vidéos en enregistrant les frame de la scène et superposition du son. 
 /item Développement d'un pseudo latex permettant la rédaction en latex directement dans la scène
 /end(itemize)
 
 Idée première de vidéo astronomie et transformée de Fourier//
 En quelques mots
 /begin(itemize)
-/item Géocentrisme ==> description de la trajectoire des planètes par des cycloïdes
+/item Géocentrisme ==>/ description de la trajectoire des planètes par des cycloïdes
 /item Pourquoi des cercles sur des cercles permettent de définir ces trajectoires ?
-/item Saut dans le temps équation de la chaleur ==> transformée de Fourier
+/item Saut dans le temps équation de la chaleur ==>/ transformée de Fourier
 /item Interprétations résolution
 /end(itemize)
 

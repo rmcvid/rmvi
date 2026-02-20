@@ -13,6 +13,7 @@ typedef enum {
     TOKEN_RBRACE,     // }
     TOKEN_LBRACKET,
     TOKEN_RBRACKET,
+    TOKEN_BREAK,
     TOKEN_FRAC,
     TOKEN_ITEM,
     TOKEN_BEGIN_ITEMIZE,
@@ -22,7 +23,7 @@ typedef enum {
     TOKEN_LOAD_IMAGE,
     TOKEN_SUB,
     TOKEN_NEXTLINE,
-    TOKEN_DISPLACE
+    TOKEN_DISPLACE,
 } TokenType;
 
 typedef enum {
@@ -68,21 +69,22 @@ typedef struct {
 } ImgOpts;
 
 typedef struct RenderBox {
-    Vector2 pos;
-    bool isPositionned; // has a fix position
-    float width;
-    float height;
-    Token *token;
-    float size;
-    struct RenderBox *items;
-    int itemCount;
-    Texture2D *texPtr;
-    bool isLine;
-    bool isImage;
-    float imgScale;       
-    float imgW, imgH;
-    bool isEndLine;
-    ImageFit fit;
+    Vector2 pos;                // is the position relative to the parent box
+    bool isPositionned;         // possibly to delete to see
+    float width;                // width of the box, can be 0 if isImage and fit == FIT_NORENDER  fit still need ?
+    float height;       
+    Token *token;               // token take the text and the type
+    float size;                 // is the font size
+    struct RenderBox *items;    // list of children
+    int itemCount;              // number of children
+    Texture2D *texPtr;          // if isImage, pointer to the texture
+    bool isEndLine;             // if true, the next box should be on a new line (for \frac and \item)
+    bool isLine;                // if true, the box is a line (for fraction)    
+    bool isImage;               // if true, the box is an image
+    float imgScale;             // parameter de scale simple pour les images
+    float imgW, imgH;           // dimension de l'image à afficher
+    ImageFit fit;               // pour les images, comment gérer les dimensions du renderbox
+    float time;                 // pour les animations sert au break, temps d'apparition du box
 } RenderBox;
 
 
@@ -92,7 +94,22 @@ typedef struct Depth{
     int item;
 } Depth;
 
+typedef struct AnimText{
+    int letterCount;
+    float animTime;
+    int boxEnd;
+    bool hasChanged;
+}AnimText;
 
+// structure pour la lecture de fichier texte
+typedef struct Lecture{
+    const char *path;
+    char *content;
+    int  oldParagraph;
+    int  currentParagraph;
+} Lecture;
+
+#define ANIM_CLAVIE_SPEED 1.0f/12.0f
 
 
 
@@ -122,6 +139,13 @@ bool depthUpdate(Depth *depht, Token *tokens, int *index);
 RenderBox rmviBuildBrace(Token *tokens, int *index, int tokenCount, Font font, int fontSize, int spacing);
 void rmviLineSkip(Vector2* cursor, float ratio, float fontSize, float height);
 int rmviCalcWidthLine(RenderBox *boxes, int boxCount, float **outListWidth);
-void rmviDrawRenderBoxesCentered(float *listWidth,RenderBox *boxes, int boxCount, Vector2 centerPos,Font font,float fontSize,float spacing,Color color);
+void rmviDrawRenderBoxesCentered(float *listWidth,float height, RenderBox *boxes, int boxCount, Vector2 centerPos,Font font,float fontSize,float spacing,Color color);
+float rmviCalcHeightTotal(RenderBox *boxes, int boxCount);
+void rmviDrawRenderBoxesAnimed(RenderBox *boxes,int boxCount,Vector2 basePos,Font font,float fontSize,float spacing, Color color, AnimText *anim);
+AnimText* initAnimText();
+void resetAnimText(AnimText *anim);
+void rmviDrawRenderBoxesCenteredAnimed(RenderBox *boxes,int boxCount,Vector2 basePos,Font font,float fontSize,float spacing, Color color, AnimText* anim);
 
+int readScenario(Lecture *lecture);
+Lecture rmviGetLecture(const char *path);
 #endif // TEXT2LATEX_H

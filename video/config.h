@@ -13,7 +13,7 @@
 #define AUDIO_RECORDING 1 // 1 to record audio, 0 to not record
 
 #define FPS 50
-#define WIDTH 1920 //
+#define WIDTH  1920//
 #define HEIGHT 1080 // 1.5
 
 

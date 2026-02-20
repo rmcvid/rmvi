@@ -103,7 +103,7 @@ int bm_visual_main(void)
                 rmviDrawTreeSquareWrite(tree, SPLIT_LEFT_ARROWS, textArrowsTree , DRAWCOLOR, RATIOWRITEARROWS, root0.innerRect.height/RATIODEFAULT);
                 rmviMyDrawText(TextFormat("N =  %d", (int)sum), (Vector2) {root0.outerRect.x + root0.innerRect.width*(2+SPACETREERATIOX), root0.outerRect.y + root0.outerRect.height/2-SIZETEXT/2}, SIZETEXT, WHITE);
                 if(frameInit != -1) {
-                    rmviWriteAnimText(TEST_DOUBLE_BEGIN, (Vector2) {center.x/2, center.y/2}, SIZETEXT, WHITE, frameInit, countFrame);
+                    //rmviWriteAnimText(TEST_DOUBLE_BEGIN, (Vector2) {center.x/2, center.y/2}, SIZETEXT, WHITE, frameInit, countFrame);
                 }
             }
             if(space_count == 1){

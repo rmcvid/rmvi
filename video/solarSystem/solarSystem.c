@@ -7,8 +7,7 @@
 #define TIME_DAY 24*60*60
 #define FRAME2SEC 1000                // conversion frame en seconde
 #define EARTH_APPARENT_SIZE 30.0f
-#define MAX_LINE 1024
-#define MAX_PARAGRAPH 8192
+
 #define SIZE_TEXT 40.0f
 #define SIZE_SPACING SIZE_TEXT/20.0f
 // /loadvideo{C:\Users\ryanm\Documents\Rmvi\animation\video\solarSystem\Image\decompte}{decompte}
@@ -42,8 +41,10 @@ typedef struct{
     int     countRight;
     bool    draw;
     bool    ecrit;
+    int     calculByFrame;
 } Representation;
 
+static Quaternion camRot = { 0, 0, 0, 1 }; 
 //  toutes les distances sont mise aux aphélies
 float frameInitCenterView = 0.0f, countFrame = 0.0f;                  // Début du centrage sur la terre
 PlanetData *planetsData;
@@ -69,18 +70,88 @@ float apparentRadiusRatio(int i);
 Vector3 GetModelCenter(Model model);
 void SetShaderLight(Shader shader, lightLoc matLoc, Light light);
 lightLoc rlGetLocationLight(unsigned int shader_id, const char *name);
-char* readScenario(const char *path, int countRight);
-
 static bool useOrtho = false;
 
+float skyboxVertices[] = {
+    // positions          
+    -1.0f,  0.4, -1.0f,
+    -1.0f, -0.4, -1.0f,
+     1.0f, -0.4, -1.0f,
+     1.0f, -0.4, -1.0f,
+     1.0f,  0.4, -1.0f,
+    -1.0f,  0.4, -1.0f,
+
+    -1.0f, -0.4,  1.0f,
+    -1.0f, -0.4, -1.0f,
+    -1.0f,  0.4, -1.0f,
+    -1.0f,  0.4, -1.0f,
+    -1.0f,  0.4,  1.0f,
+    -1.0f, -0.4,  1.0f,
+
+     1.0f, -0.4, -1.0f,
+     1.0f, -0.4,  1.0f,
+     1.0f,  0.4,  1.0f,
+     1.0f,  0.4,  1.0f,
+     1.0f,  0.4, -1.0f,
+     1.0f, -0.4, -1.0f,
+
+    -1.0f, -0.4,  1.0f,
+    -1.0f,  0.4,  1.0f,
+     1.0f,  0.4,  1.0f,
+     1.0f,  0.4,  1.0f,
+     1.0f, -0.4,  1.0f,
+    -1.0f, -0.4,  1.0f
+};
+
+static void CopyFaceRGBA8(unsigned char *dstFace, const unsigned char *srcRGBA, int srcW, int x0, int y0, int size){
+    const int bpp = 4;
+    for (int y = 0; y < size; y++)
+    {
+        const unsigned char *srcRow = srcRGBA + ((y0 + y) * srcW + x0) * bpp;
+        unsigned char *dstRow = dstFace + (y * size) * bpp;
+        memcpy(dstRow, srcRow, (size_t)size * bpp);
+    }
+}
+
+unsigned int LoadCubemapFromCross4x3(const char *crossPath){
+    Image cross = LoadImage(crossPath);
+    if (!cross.data) return 0;
+    ImageFormat(&cross, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+    if ((cross.width % 4) != 0 || (cross.height % 3) != 0){
+        TraceLog(LOG_ERROR, "Cross image must be 4N x 3N. Got %dx%d", cross.width, cross.height);
+        UnloadImage(cross);
+        return 0;
+    }
+    int size = cross.width / 4;
+    if (cross.height / 3 != size){
+        TraceLog(LOG_ERROR, "Cross faces must be square");
+        UnloadImage(cross);
+        return 0;
+    }
+    const int bpp = 4;
+    size_t faceBytes = (size_t)size * (size_t)size * bpp;
+    unsigned char *data = (unsigned char *)malloc(faceBytes * 6);
+    if (!data) { UnloadImage(cross); return 0; }
+    const unsigned char *src = (const unsigned char *)cross.data;
+    // +X, -X, +Y, -Y, +Z, -Z
+    CopyFaceRGBA8(data + faceBytes * 0, src, cross.width, 2*size, 1*size, size); // +X
+    CopyFaceRGBA8(data + faceBytes * 1, src, cross.width, 0*size, 1*size, size); // -X
+    CopyFaceRGBA8(data + faceBytes * 2, src, cross.width, 1*size, 0*size, size); // +Y
+    CopyFaceRGBA8(data + faceBytes * 3, src, cross.width, 1*size, 2*size, size); // -Y
+    CopyFaceRGBA8(data + faceBytes * 4, src, cross.width, 1*size, 1*size, size); // +Z
+    CopyFaceRGBA8(data + faceBytes * 5, src, cross.width, 3*size, 1*size, size); // -Z
+    unsigned int id = rlLoadTextureCubemap(data, size, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8, 1);
+    free(data);
+    UnloadImage(cross);
+    return id;
+}
 
 Vector3 cameraPos   = {0.0f, 0.0f,  +100.0f};
 Vector3 cameraFront = {0.0f, 0.0f, -1.0f};
 Vector3 cameraUp    = {0.0f, 1.0f,  0.0f};
-float yaw = -90, pitch = 0;
 float cameraSpeed;
 float lastX, lastY;
-float fov = 45;
+float fov = 45;                 // zoom
 float shininess = 64;
 bool firstMouse = true;
 rmviPlanet3D* planets;
@@ -89,14 +160,15 @@ rmviDynamic3D **features;
 int space_count = 0;
 Representation actualRep;
 Representation repEarth = {
-    .frame2Sec = 1000,
+    .frame2Sec = FRAME2SEC,
     .reference = 3,
     .rotation = true,
     .ua2Pixel = 800,
     .asteroid = false,
     .countRight = 0,
     .draw = false,
-    .ecrit = false
+    .ecrit = false,
+    .calculByFrame = 1
 };
 
 static bool strongAmbient = false;
@@ -108,14 +180,37 @@ Light light ={
     {.40f, .40f, .40f}
 };
 
+Matrix getModelMatPlanet(int i, rmviPlanet3D planet, int rotationFrame, Representation rep, PlanetData planetData){
+    Matrix modelMat = MatrixIdentity();
+    modelMat = MatrixMultiply(modelMat, planet.model.transform);
+    modelMat = MatrixMultiply( 
+        modelMat,
+        MatrixScale(apparentRadiusRatio(i)*EARTH_APPARENT_SIZE,
+                    apparentRadiusRatio(i)*EARTH_APPARENT_SIZE,
+                    apparentRadiusRatio(i)*EARTH_APPARENT_SIZE)
+        );
+    modelMat = MatrixMultiply(modelMat, MatrixRotateY(2*PI*actualRep.frame2Sec*rotationFrame*pow(2,actualRep.calculByFrame)/(planetData.rotation*TIME_DAY) )
+    );
+    modelMat = MatrixMultiply(modelMat, MatrixRotateZ(planetData.inclinaison * DEG2RAD));
+    modelMat = MatrixMultiply(modelMat,
+        MatrixTranslate(
+            planet.features.position.x /UA * actualRep.ua2Pixel,
+            planet.features.position.y /UA * actualRep.ua2Pixel,
+            planet.features.position.z /UA * actualRep.ua2Pixel
+        ));
+    return modelMat;
+}
 
 
-int bm_visual_main(void)
-{   
-    char *paragraph;
+
+int bm_visual_main(void){   
     Vector2 paragraphPos = CENTER;
     float paragraphHeight;
     Matrix modelMat, viewMat, projMat;
+    Token tokens[256];
+    RenderBox boxes[256];
+    AnimText *animText = initAnimText();
+    int boxCount;
     float deltatime = 0;
     float curentFrame,oldFrame = 0;
     int countFrame = 0;
@@ -135,9 +230,15 @@ int bm_visual_main(void)
     float sizeOrtho = 10.0f;
     actualRep = repEarth;
     int rotationFrame = 0;
-    int oldCountRight = -1;
+    float *listWidth;
+    int lineCount;
+    float heighTotal;
+    Vector3 sunDir;
+    rmviCarthesian carthesian = rmviGetCarthesian((Vector2) {CENTER.x/2, CENTER.y},(Vector2){490, 420},(Vector2){70, 70});
+    Lecture lecture = rmviGetLecture(HERE_PATH "presentation.txt");
     //mp4ToTexture(IMAGE_PATH "decompte/decompte.mp4", IMAGE_PATH "decompte", "decompte");
     //Video decompte = LoadVideo(IMAGE_PATH "decompte/decompte.mp4", IMAGE_PATH "decompte", "decompte", 0);
+
     // asteroid
     Shader asteroidShader = LoadShader(SHADER_PATH "asteroid.vs", SHADER_PATH "asteroid.fs");
     unsigned int astViewLoc = rlGetLocationUniform(asteroidShader.id, "view");
@@ -195,11 +296,26 @@ int bm_visual_main(void)
         rlDisableVertexArray();
     }
     
+    // sky box
+    Shader skyshader = LoadShader(SHADER_PATH "skybox.vs",SHADER_PATH "skybox.fs");
+    //unsigned int cubemapId = LoadCubemapFromCross4x3(IMAGE_PATH "skybox.png");
+    unsigned int skyVao = rlLoadVertexArray();
+    rlEnableVertexArray(skyVao);
+    unsigned int skyVbo = rlLoadVertexBuffer(skyboxVertices, sizeof(skyboxVertices), false);
+    rlSetVertexAttribute(0, 3, RL_FLOAT, false, 3 * sizeof(float), 0);
+    rlEnableVertexAttribute(0);
+    //int skyboxLoc = GetShaderLocation(skyshader, "skybox");
+    unsigned int skyViewLoc = rlGetLocationUniform(skyshader.id,"view");
+    unsigned int skyProjLoc = rlGetLocationUniform(skyshader.id,"projection");
+    unsigned int sunDirLoc = rlGetLocationUniform(skyshader.id,"sunDir");
+    unsigned int cameraFrontLoc = rlGetLocationUniform(skyshader.id,"cameraFront");
+    rlEnableShader(skyshader.id);
+    //rlSetUniformSampler(skyboxLoc, 0); // texture unit 0
+    rlDisableShader();
     rlDisableBackfaceCulling();
     DisableCursor();
     float startTime = GetTime();
-    while (!WindowShouldClose())
-    {
+    while (!WindowShouldClose()){
         UpdateCursorToggle();
         curentFrame = GetTime();
         deltatime = curentFrame - oldFrame;
@@ -211,9 +327,9 @@ int bm_visual_main(void)
             rlEnableDepthTest();
             // Player movement and camera
             processInput();
+            if(IsKeyPressed(KEY_RIGHT)) resetAnimText(animText);
             updateMouse();
             //PlayVideo(&decompte);
-            rmviGravityRepulsion3D(features,planetCount);
             updateZoom(GetMouseWheelMoveV());
             viewMat = MatrixLookAt(
                 cameraPos, 
@@ -225,29 +341,17 @@ int bm_visual_main(void)
                 (projMat = MatrixPerspective(DEG2RAD * fov,aspect,0.1f,30000.0f));
             // updatepos
             if (actualRep.rotation) rotationFrame++;
+            for(int i = 0; i< pow(2,actualRep.calculByFrame); i++){
+                rmviGravityRepulsion3D(features,planetCount);
+                for(int i = 0; i< planetCount; i++){
+                    // update model
+                    rmviUpdatePosition3D(features[i],actualRep.frame2Sec,Vector3Zero());
+                }
+            }
+            light.position = Vector3Scale(features[0]->position, 1.0f /UA * actualRep.ua2Pixel);
             for(int i = 0; i< planetCount; i++){
-                // update model
-                rmviUpdatePosition3D(features[i],actualRep.frame2Sec,Vector3Zero());
                 if(actualRep.draw){
-                    if(i == 0) light.position = Vector3Scale(features[i]->position, 1.0f /UA * actualRep.ua2Pixel);
-                modelMat = MatrixIdentity();
-                modelMat = MatrixMultiply(modelMat, planets[i].model.transform);
-                modelMat = MatrixMultiply( 
-                    modelMat,
-                    MatrixScale(apparentRadiusRatio(i)*EARTH_APPARENT_SIZE,
-                                apparentRadiusRatio(i)*EARTH_APPARENT_SIZE,
-                                apparentRadiusRatio(i)*EARTH_APPARENT_SIZE)
-                    );
-                modelMat = MatrixMultiply(modelMat,
-                                MatrixRotateY(2*PI*actualRep.frame2Sec*rotationFrame/(planetsData[i].rotation*TIME_DAY) )
-                );
-                modelMat = MatrixMultiply(modelMat, MatrixRotateZ(planetsData[i].inclinaison * DEG2RAD));
-                modelMat = MatrixMultiply(modelMat,
-                    MatrixTranslate(
-                        planets[i].features.position.x /UA * actualRep.ua2Pixel,
-                        planets[i].features.position.y /UA * actualRep.ua2Pixel,
-                        planets[i].features.position.z /UA * actualRep.ua2Pixel
-                    ));
+                    modelMat = getModelMatPlanet(i, planets[i], rotationFrame, actualRep, planetsData[i]);
                 SetShaderValue(planets[i].shader, planets[i].locUniform.lightLoc.position, &light.position,RL_SHADER_UNIFORM_VEC3);
                 SetShaderValue(planets[i].shader, planets[i].locUniform.lightLoc.ambient, &light.ambient,RL_SHADER_UNIFORM_VEC3);
                 SetShaderValue(planets[i].shader, planets[i].locUniform.viewPosLoc, &cameraPos, RL_SHADER_UNIFORM_VEC3);
@@ -288,20 +392,37 @@ int bm_visual_main(void)
             }
             rlDisableShader();
             DrawFPS(10, 10);
+            lecture.currentParagraph = actualRep.countRight;
             if (actualRep.helpActive) help(features,3);
             if(actualRep.ecrit){
-                if(oldCountRight != actualRep.countRight){
-                oldCountRight = actualRep.countRight;
-                paragraph = readScenario(HERE_PATH "presentation.txt", actualRep.countRight);
-                if( paragraph != NULL){
-                    //paragraphHeight = rmviCalcTextHeight(paragraph, mathFont, SIZE_TEXT, SIZE_SPACING, true);
-                    paragraphPos = (Vector2) { CENTER.x/5, CENTER.y/2};
-                } 
+                if(readScenario(&lecture)){
+                    animText->animTime = 0;
+                    int tokenCount = rmviTokenizeLatex(lecture.content,tokens, 256);
+                    boxCount = rmviBuildRenderBoxes(tokens,tokenCount,boxes,mathFont,SIZE_TEXT, SIZE_SPACING);
+                    if( lecture.content != NULL) paragraphPos = (Vector2) { CENTER.x, CENTER.y}; 
+                }
+                Vector2 drawPos = paragraphPos;
+                lineCount =rmviCalcWidthLine(boxes, boxCount,&listWidth);
+                heighTotal = rmviCalcHeightTotal(boxes, boxCount);
+                //rmviDrawRenderBoxesCentered(listWidth, heighTotal,boxes, boxCount,drawPos,mathFont,SIZE_TEXT, SIZE_SPACING,WHITE);
+                rmviDrawRenderBoxesCenteredAnimed(boxes, boxCount,drawPos,mathFont,SIZE_TEXT, SIZE_SPACING,WHITE,animText);
+                rmviAudioRenderBoxesAnimed(animText);
+                //rmviDrawCarthesianFull(carthesian, 10, 3, WHITE,true,false);
+                //rmviWriteLatex(paragraph, &drawPos, SIZE_TEXT, SIZE_SPACING, WHITE, mathFont);    
             }
-            
-            Vector2 drawPos = paragraphPos;
-            rmviWriteLatex(paragraph, &drawPos, SIZE_TEXT, SIZE_SPACING, WHITE, mathFont);    
-            }
+            //skybox
+            sunDir = Vector3Normalize(Vector3Subtract(light.position, cameraPos));
+            rlEnableVertexArray(skyVao);
+            rlEnableShader(skyshader.id);
+            rlSetUniformMatrices(skyViewLoc, &viewMat,1);
+            rlSetUniformMatrices(skyProjLoc, &projMat,1);
+            rlSetUniform(sunDirLoc, &sunDir, RL_SHADER_UNIFORM_VEC3, 1);
+            rlSetUniform(cameraFrontLoc, &cameraFront, RL_SHADER_UNIFORM_VEC3, 1);
+            //rlActiveTextureSlot(0);
+            //rlEnableTextureCubemap(cubemapId);
+            rlDrawVertexArray(0,36);
+            rlEnableDepthMask();
+
         EndTextureMode();
         rmviDraw();
         if (RECORDING) addImageToffmpeg(ffmpeg);
@@ -309,61 +430,6 @@ int bm_visual_main(void)
     }
     free(planets);
     return 0;
-}
-
-int isBlankLine(const char *line){
-    while (*line)
-    {
-        if (*line != ' ' && *line != '\t' &&
-            *line != '\n' && *line != '\r')
-            return 0;
-        line++;
-    }
-    return 1;
-}
-char* readScenario(const char *path, int countRight){
-    FILE *file = fopen(path, "r");
-    if (!file) return NULL;
-    char line[MAX_LINE];
-    char temp[MAX_PARAGRAPH] = {0};
-    int currentParagraph = 0;
-    int hasContent = 0;
-    while (fgets(line, sizeof(line), file))
-    {
-        if (isBlankLine(line))
-        {
-            if (hasContent)
-            {
-                if (currentParagraph == countRight)
-                {
-                    fclose(file);
-                    char *result = malloc(strlen(temp) + 1);
-                    strcpy(result, temp);
-                    return result;
-                }
-
-                temp[0] = '\0';
-                hasContent = 0;
-                currentParagraph++;
-            }
-        }
-        else
-        {
-            hasContent = 1;
-            if (strlen(temp) + strlen(line) < MAX_PARAGRAPH)
-                strcat(temp, line);
-        }
-    }
-    if (hasContent && currentParagraph == countRight)
-    {
-        char *result = malloc(strlen(temp) + 1);
-        strcpy(result, temp);
-        fclose(file);
-        return result;
-    }
-
-    fclose(file);
-    return NULL;
 }
 
 int bm_visual_initialisation(void) {
@@ -558,8 +624,7 @@ void CartesianToSpherical(Vector3 p, float *r, float *theta, float *phi){
     }
 }
 // à modifier
-void help(rmviDynamic3D **features, int n)
-{
+void help(rmviDynamic3D **features, int n){
     float r, theta, phi;
     CartesianToSpherical(features[n]->position, &r, &theta, &phi);
     char text[256];
@@ -587,7 +652,6 @@ void help(rmviDynamic3D **features, int n)
     Vector2 textPos = {CENTER.x , CENTER.y};
     rmviWriteLatexLeftCenteredClassic(text, &textPos);
     rmviWriteLatexLeftCenteredClassic(text2, &textPos);
-
 }
 
 
@@ -647,15 +711,41 @@ PlanetData *LoadPlanetsFromJSON(const char *path, int *outCount){
     *outCount = count;
     return planets;
 }
+
+void updateMouse(){
+    Vector2 delta = GetMouseDelta();
+    float sensitivity = 0.0025f;         // ajuste (≈ 0.1°/pixel -> ~0.0017 rad)
+    float yawDelta   =  -delta.x * sensitivity;
+    float pitchDelta =  -delta.y * sensitivity;
+
+    Vector3 worldUp = Vector3RotateByQuaternion((Vector3){ 0, 1, 0 }, camRot);
+    Vector3 right = Vector3RotateByQuaternion((Vector3){ 1, 0, 0 }, camRot);
+    Quaternion qYaw   = QuaternionFromAxisAngle(worldUp, yawDelta);
+    Quaternion qPitch = QuaternionFromAxisAngle(right,  pitchDelta);
+    camRot = QuaternionMultiply(qYaw, camRot);
+    camRot = QuaternionMultiply(qPitch, camRot);
+    camRot = QuaternionNormalize(camRot);
+
+    // Déduire les axes caméra depuis l'orientation
+    Vector3 front = Vector3RotateByQuaternion((Vector3){ 0, 0, -1 }, camRot);
+    Vector3 up    = Vector3RotateByQuaternion((Vector3){ 0, 1,  0 }, camRot);
+
+    front = Vector3Normalize(front);
+    up    = Vector3Normalize(up);
+
+    // Met à jour ta logique existante
+    cameraFront = front;          // si tu utilises cette variable ailleurs
+    cameraUp = up;
+}
+/*
 void updateMouse(){
     Vector2 delta = GetMouseDelta(); // dx et dy depuis la dernière frame
+    // ici fct à modifier, peut être passer au quaternion
     float sensitivity = 0.1f;
     yaw   += delta.x * sensitivity;
     pitch -= delta.y * sensitivity;
-
-    if(pitch > 89.0f) pitch = 89.0f;
-    if(pitch < -89.0f) pitch = -89.0f;
-
+    //if(pitch > 89.0f) pitch = 89.0f;
+    //if(pitch < -89.0f) pitch = -89.0f;
     Vector3 direction = {
         cosf(DEG2RAD*yaw) * cosf(DEG2RAD*pitch),
         sinf(DEG2RAD*pitch),
@@ -663,6 +753,7 @@ void updateMouse(){
     };
     cameraFront = Vector3Normalize(direction);
 }
+*/
 
 void updateZoom(Vector2 wheel)
 {
@@ -705,6 +796,8 @@ void processInput(){
     if (IsKeyPressed(KEY_LEFT) && actualRep.countRight > 0) actualRep.countRight--;
     if (IsKeyPressed(KEY_J)) actualRep.reference = 5;
     if (IsKeyPressed(KEY_T)) actualRep.reference = 3;
+    if (IsKeyPressed(KEY_DOWN)) actualRep.calculByFrame --;
+    if (IsKeyPressed(KEY_UP)) actualRep.calculByFrame ++;
     
 }
 

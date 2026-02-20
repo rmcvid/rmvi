@@ -1,0 +1,51 @@
+Et si on superposait de l'écrit au bruit du clavier /break
+
+On commence par la partie simple : s'enregistrer en train de taper des mots sur un clavier.
+On fait ça pour tous les nombres de lettres possibles.
+/begin(itemize)
+    /item une lettre
+    /item deux lettres
+    /item trois lettres
+    /item etc etc
+/end(itemize)
+
+
+Ensuite, avant d'écrire chaque mot, il faut calculer son nombre de lettres.// /break
+En prendre l'audio associé et adapter sa vitesse à la vitesse d'écriture.
+
+La vitesse moyenne d'écriture sur un clavier est d'environ 4 caractères par seconde.
+
+Phrase écrite à 4 caractères par seconde.
+
+Par rapport à la vitesse de lecture ...
+/break{3}
+//
+// C'est lent.
+
+La vitesse de lecture oscille entre 16 et 25 caractères par seconde.
+
+Intuitivement, on peut alors accélérer l'audio pour le faire correspondre à la vitesse d'écriture.//
+Le problème, c’est qu’à 25 caractères par seconde, l'audio est shifted vers les aigues.
+
+On peut prendre un compromis à 15 caractères par seconde. C'est suffisamment lent pour ne pas heurter mes oreilles,
+mais pas trop pour m'impatienter.
+
+On a maintenant un programme qui permet de simuler l'écriture d'un texte.
+
+En jouant avec les audios, je me suis rendu compte d’un truc fou.
+Un audio fonctionne basiquement comme une vidéo. C’est un enchaînement d’images audio où
+chaque image audio représente une variation de pression.
+
+Les images visuelles, elles, sont une multitude de photons à différentes énergies,
+dont celle-ci fixe la couleur.
+
+Bref, là où une vidéo comporte généralement entre 24 et 60 images par seconde,
+un audio en compte 44100.
+
+/direct 44100!
+
+
+Pourquoi autant ?
+
+% échantillon à 1 repliement entre 0.9 et 0.1
+% à priori, multiple du La devrait fonctionner

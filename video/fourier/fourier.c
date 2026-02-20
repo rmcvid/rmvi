@@ -27,8 +27,8 @@ Color colorListPlanet[NBPLANETS];
 //  toutes les distances sont mise aux aphélies
 rmviPlanet sun, mercury, venus, earth, mars, jupiter, saturn;
 rmviPlanet *planets[NBPLANETS] = {&sun, &mercury, &venus, &earth, &mars, &jupiter, &saturn};
-rmviDash dashSun[MEMORY], dashMercury[MEMORY], dashVenus[MEMORY], dashEarth[MEMORY], dashMars[MEMORY], dashJupiter[MEMORY], dashSaturn[MEMORY];
-rmviDash *dashList[NBPLANETS] = {dashSun, dashMercury, dashVenus, dashEarth, dashMars, dashJupiter, dashSaturn};
+rmviDash2 dashSun[MEMORY], dashMercury[MEMORY], dashVenus[MEMORY], dashEarth[MEMORY], dashMars[MEMORY], dashJupiter[MEMORY], dashSaturn[MEMORY];
+rmviDash2 *dashList[NBPLANETS] = {dashSun, dashMercury, dashVenus, dashEarth, dashMars, dashJupiter, dashSaturn};
 bool reset_dash = false;
 float frameInitCenterView = 0.0f, 
 countFrame = 0.0f;                  // Début du centrage sur la terre
@@ -57,6 +57,7 @@ int bm_visual_initialisation(void) {
 }
 int bm_visual_uninitialisation(void) {
     // De-Initialization
+    if (AUDIO_RECORDING) {CloseAudioRecorder(&rec);}
     CloseWindow();  // Close window and OpenGL context
     UnloadFont(mathFont);
     UnloadRenderTexture(screen);
@@ -133,36 +134,13 @@ void UpdateCenterView( Vector2 *centerView, Vector2 newCenter, Vector2 oldCenter
     Vector2Scale(oldCenter,Clamp((1 -(countFrame - frameInitCenterView)/timeFrame),0,1))
     );
 }
-void rmviAddDash(rmviDash *dashPlanet, rmviDynamic2D *features, Vector2 center, Vector2 speed){
-    int i;
-    if ((int) countFrame%SPACE_DASH == 0)
-    {   
-        i = (int)(countFrame/SPACE_DASH)%MEMORY;
-        dashPlanet[i] = (rmviDash){Vector2Add(features->position, Vector2Scale(center,-1)), Vector2Add(features->velocity, Vector2Scale(speed,-1))};
-    }
-}
-/*void rmviAdddashList(rmviDash **dashList, rmviPlanet **planets, int n){
-    for(int i=0; i<n; i++){rmviAddDash(dashList[i], &planets[i]->features, planets[i]->features.velocity);}
-}*/
 
-void rmviDrawDashFast(rmviDash *dashPlanet, Vector2 center, Color color, float scale, int n) {
-    rlBegin(RL_LINES);
-    rlColor4ub(color.r, color.g, color.b, color.a);
-    for (int i = 0; i < n; i++) {
-        Vector2 start, end;
-        start = Vector2Add(Vector2Scale(center,  scale), Vector2Scale(dashPlanet[i].position, scale));
-        end = Vector2Add(start, Vector2Scale(Vector2Normalize(dashPlanet[i].velocity), 10.0f));
-        rlVertex2f(CENTER.x + start.x, CENTER.y + start.y);
-        rlVertex2f(CENTER.x + end.x, CENTER.y + end.y);
-    }
 
-    rlEnd();
-}
 void slideOne(void){
     if(reset_dash && (int)countFrame%SPACE_DASH == 0){
         for(int i=0; i < sizeof(planets) / sizeof(planets[0]); i++){
             for(int j=0; j<MEMORY; j++){
-                dashList[i][j] = (rmviDash){VECTOR20, VECTOR20};
+                dashList[i][j] = (rmviDash2){VECTOR20, VECTOR20};
             }
         }
         reset_dash = false;
@@ -178,9 +156,9 @@ void slideOne(void){
     rmviUpdateGravity(planets, sizeof(planets) / sizeof(planets[0]));
     for (int i = 0; i < sizeof(planets) / sizeof(planets[0]) ; i++) {
         rmviUpdatePosition(planets[i], FRAME2SEC, centerSpeed);
-        rmviAddDash(dashList[i], &planets[i]->features, centerView, centerSpeed);
+        rmviAddDash2(dashList[i], MEMORY, countFrame, SPACE_DASH, &planets[i]->features, centerView, centerSpeed);
         //rmviDrawDash(dashList[i], centerView, colorListPlanet[i]);
-        rmviDrawDashFast(dashList[i], VECTOR20, colorListPlanet[i], i < 5 ? (UA2PIXEL / UA) : (UA2PIXEL_FAR / UA), MEMORY);
+        rmviDrawDash2Fast(dashList[i], VECTOR20, colorListPlanet[i], i < 5 ? (UA2PIXEL / UA) : (UA2PIXEL_FAR / UA), MEMORY);
         rmviDrawPlanet(*planets[i], centerView, i < 5 ? (UA2PIXEL / UA) : (UA2PIXEL_FAR / UA));
     }
 }
@@ -247,6 +225,8 @@ FourierCoeff *testFFT(rmviPointArray points){
 }
 
 
+
+
 int bm_visual_main(void){   
     initialisePlanets();
     // initialisation des de la couleur des dashs
@@ -267,13 +247,14 @@ int bm_visual_main(void){
     const char *t2 = "";
     int countAnim = 0;
     Token tokens[256];
-    int tokenCount = rmviTokenizeLatex("", tokens, 256); // /loadimage[scale=0.2 , fit = noRender, posY = 400, posX = 400 ]{C:/Users/ryanm/Documents/Rmvi/animation/video/solarSystem/Image/decompte/decompte_0001.jpg} // /frac{/frac{a}{b}}{/frac{c}{d}}   // /Delta t puis on continue avec cela /delta /phi /psi  // avant  aprés la frac et une deuxieme //  si on écrit après
-    
+    int tokenCount = rmviTokenizeLatex("Terminons par un très long mot pour voir comment le décalage se comporte genre longmotsdefou", tokens, 256); // /loadimage[scale=0.2 , fit = noRender, posY = 400, posX = 400 ]{C:/Users/ryanm/Documents/Rmvi/animation/video/solarSystem/Image/decompte/decompte_0001.jpg} // /frac{/frac{a}{b}}{/frac{c}{d}}   // /Delta t puis on continue avec cela /delta /phi /psi  // avant  aprés la frac et une deuxieme //  si on écrit après
     RenderBox boxes[256];
     float scale = 0.3;
     int boxCount = rmviBuildRenderBoxes(tokens, tokenCount, boxes, mathFont, SIZE_TEXT, SIZE_SPACING);
     float *listWidth;
     int linesCount =rmviCalcWidthLine(boxes, boxCount,&listWidth);
+    AnimText *animText1 = initAnimText();
+    audioInitKeyboard();
     while (!WindowShouldClose())
     {
         if(IsKeyPressed(KEY_Q)){
@@ -286,17 +267,21 @@ int bm_visual_main(void){
             if(IsKeyPressed(KEY_SPACE)){
                 space_count ++;
                 countFrame = 0;
+                animText1->animTime = 0;
             }
-            rmviDrawRenderBoxes( boxes, boxCount, (Vector2){100, 200}, mathFont, SIZE_TEXT, SIZE_SPACING, WHITE);
-            rmviDrawRenderBoxesCentered(listWidth, boxes, boxCount, (Vector2){GetScreenWidth()/2, GetScreenHeight()/2}, mathFont, SIZE_TEXT, SIZE_SPACING, WHITE);
+            //rmviDrawRenderBoxes( boxes, boxCount, (Vector2){100, 200}, mathFont, SIZE_TEXT, SIZE_SPACING, WHITE);
+            float height = rmviCalcHeightTotal(boxes, boxCount);
+            //rmviDrawRenderBoxesCentered(listWidth, height, boxes, boxCount, (Vector2){GetScreenWidth()/2, GetScreenHeight()/2}, mathFont, SIZE_TEXT, SIZE_SPACING, WHITE);
+            //rmviDrawRenderBoxesAnimed(boxes, boxCount, (Vector2){GetScreenWidth()/6, GetScreenHeight()/6}, mathFont, SIZE_TEXT, SIZE_SPACING, WHITE, animText1);
+            //rmviAudioRenderBoxesAnimed(animText1);
             if(IsKeyPressed(KEY_R)) reset_dash = true;
             
-            /*if(anim1){
+            if(anim1){
                 slideOne();
             }
             else{
                 slideTwo(figure,ryanJpg,scale, coeff,timeFourier);
-            }*/
+            };
             DrawFPS(10, 10);
         EndTextureMode();
         rmviDraw();

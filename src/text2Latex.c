@@ -20,6 +20,11 @@ Font mathFont;
 #define BIG 1.4f
 #define RATIO_LINE 1/20.0f
 #define MATH_INTERLINE_RATIO INTERLIGNE_ITEM
+#define MINIMAL_BREAK_TIME 1.5f
+
+#define MAX_LINE 1024
+#define MAX_PARAGRAPH 1024
+
 #define ERROR_OUT_OF_INDEX(index, tokenCount)                           \
     do {                                                                \
         if ((index) > (tokenCount)) {                                   \
@@ -87,6 +92,7 @@ State state = {
 };
 
 
+
 static Token IntToken        = { TOKEN_SYMBOL, "∫" };
 static Token deltaToken      = { TOKEN_SYMBOL, "δ" };
 static Token DeltaToken      = { TOKEN_SYMBOL, "Δ" };
@@ -114,6 +120,7 @@ static Token infinityToken   = { TOKEN_SYMBOL, "∞" };
 static Token spaceToken      = { TOKEN_SYMBOL, " " };
 static Token tiretToken      = { TOKEN_SYMBOL, "-"};
 static Token displaceToken   = { TOKEN_DISPLACE, ""}; 
+static Token breakToken      = { TOKEN_BREAK, ""};
 
 typedef struct {
     char path[512];
@@ -172,6 +179,8 @@ int tokenTypeCommand(Token token){
         return TOKEN_FRAC;
     else if(strcmp(token.text,"/item") == 0)
         return TOKEN_ITEM;
+    else if(strcmp(token.text,"/break") == 0)
+        return TOKEN_BREAK;
     else if (strcmp(token.text, "/begin(itemize)") == 0)
         return TOKEN_BEGIN_ITEMIZE;
     else if (strcmp(token.text, "/end(itemize)") == 0 )
@@ -190,6 +199,7 @@ int tokenTypeCommand(Token token){
 int rmviTokenizeLatex(const char *latex, Token *tokens, int maxTokens){
     int i = 0;
     int count = 0;
+    if(latex == NULL) return 0;
     while (latex[i] && count < maxTokens){
         char c = latex[i];
         // Ignore spaces
@@ -634,7 +644,9 @@ void rmviFixChildPositionUnder(RenderBox *box, float ratio){
         box->items[i].pos.y += cursor.y;
         cursor.y += box->items[i].height + ratio*box->items[i].size;
         box->height += box->items[i].height + ratio*box->items[i].size;
+        box->width = min( max(box->width,box->items[i].width),RATIO_LEN_TEXT);
     }
+
 }
 
 RenderBox rmviBuildSpace(Token *tokens,int tokenCount,int *index,Font font,float fontSize,float spacing){
@@ -690,6 +702,7 @@ RenderBox rmviBuildBeginItemize(Token *tokens,int tokenCount,int *index,Font fon
     box.token = &displaceToken;
     // ici parametre à imposer
     box.pos = (Vector2) {RATIO_INDENT_BEGIN*fontSize , 0 };
+    box.isEndLine = true;
     while (depthContinue(&depth)){
         if(depthUpdate(&depth,tokens,index)){
         }
@@ -718,6 +731,20 @@ RenderBox rmviBuildBeginItemize(Token *tokens,int tokenCount,int *index,Font fon
     return box;
 }
 
+RenderBox rmviBuildBreak(Token *tokens,int tokenCount, int *index){
+    RenderBox box = {0};
+    // la le problème c'est que le tems n'est pas compris
+    // soit on rajoute un parametre soi on voit comment on peut modifier le text
+    // le truc c'est qu'il sera traité comme du text donc vaut mieux pas
+    box.token = &breakToken;
+    (*index) ++;
+    char *timeStr = rmviReadSymbolText(tokens, tokenCount, index, '{', '}');
+    // ici j'ai une fonction qui peut ressortir ca en vrai
+    float time = *timeStr ? (float) atof(timeStr) : MINIMAL_BREAK_TIME;         // doit vérifier que timeStr est non nulle ?z
+    box.time = time;
+    free(timeStr);
+    return box;
+}
 
 RenderBox rmviMain2Box(Token *tokens,int tokenCount,Font font,float fontSize,float spacing, int *index){
     // mettre un switch case
@@ -727,7 +754,9 @@ RenderBox rmviMain2Box(Token *tokens,int tokenCount,Font font,float fontSize,flo
         (*index)++; // skip \frac
         box = rmviBuildFrac(tokens, tokenCount,index,font, fontSize,spacing, true);
     }
-   
+    else if(tokens[*index].type == TOKEN_BREAK){
+        box = rmviBuildBreak(tokens, tokenCount,index);
+    }
     else if (tokens[*index].type == TOKEN_BEGIN_ITEMIZE){
         box = rmviBuildBeginItemize(tokens, tokenCount,index,font, fontSize,spacing);
         rmviFixChildPositionUnder(&box,1.0f);
@@ -806,7 +835,7 @@ int rmviBuildRenderBoxes(Token *tokens,int tokenCount,RenderBox *boxes,Font font
     float height = fontSize;
     RenderBox box = {0};
     for (int index = 0; index < tokenCount; ){
-        height = max(height,box.height);
+        height = max(height,boxes[count-1].height);
         if(cursor.x > RATIO_LEN_TEXT ){
             rmviLineSkip(&cursor,INTERLIGNE, fontSize,height);
             if (count !=0) boxes[count-1].isEndLine = true;
@@ -855,8 +884,9 @@ void rmviDrawRenderBoxes(RenderBox *boxes,int boxCount,Vector2 basePos,Font font
     }
 }
 
-void rmviDrawRenderBoxesCentered(float *listWidth,RenderBox *boxes, int boxCount, Vector2 centerPos,Font font,float fontSize,float spacing,Color color){
+void rmviDrawRenderBoxesCentered(float *listWidth,float height, RenderBox *boxes, int boxCount, Vector2 centerPos,Font font,float fontSize,float spacing,Color color){
     Vector2 centeredPos = centerPos;
+    centeredPos.y = centerPos.y - height / 2;
     int endLine = 0;
     for(int i =0; i< boxCount; i++){
         centeredPos.x = centerPos.x - listWidth[endLine]/2;
@@ -864,6 +894,150 @@ void rmviDrawRenderBoxesCentered(float *listWidth,RenderBox *boxes, int boxCount
         if(boxes[i].isEndLine) endLine ++;
     }
 }
+
+AnimText* initAnimText(){
+    AnimText *anim = MemAlloc(sizeof(AnimText));
+    anim->boxEnd = -1;
+    return anim;
+}
+void resetAnimText(AnimText *anim){
+    *anim = (AnimText){0};
+    anim->boxEnd = -1;
+}
+
+void freeAnimText(AnimText *anim){
+    if(anim) free(anim);
+}
+
+float boxWriteTime(RenderBox box){
+    float time = 0;
+    if(box.token && box.token->type == TOKEN_BREAK) return box.time;
+    if(box.itemCount>0){
+        for(int i =0; i< box.itemCount; i++){
+            time+= boxWriteTime(box.items[i]);
+        }
+    }
+    if(box.token && box.token->text) return time + ANIM_CLAVIE_SPEED*(1.0f + GetCodepointCount(box.token->text));
+    else return time;
+}
+
+void rmviDrawRenderBoxAnimed(RenderBox *box,Vector2 basePos,Font font,float fontSize,float spacing,Color color, AnimText* anim){ 
+    Vector2 drawPos;
+    AnimText subAnim = *anim;
+    if(box->isPositionned) drawPos = (Vector2){ box->pos.x,box->pos.y }; 
+    else drawPos = (Vector2) { basePos.x + box->pos.x, basePos.y + box->pos.y }; 
+    if (box->itemCount > 0 && box->items){ 
+        float cursorX = 0.0f; 
+        for (int i = 0; i < box->itemCount; i++){
+            anim->boxEnd = i;
+            RenderBox *child = &box->items[i];
+            float timeToBox = boxWriteTime(*child);
+            if(subAnim.animTime>timeToBox) rmviDrawRenderBox(child,drawPos,font,child->size,spacing,color);
+            else rmviDrawRenderBoxAnimed(child,drawPos,font,child->size,spacing,color,&subAnim);
+            subAnim.animTime -= timeToBox;
+            cursorX += child->width;
+            if (subAnim.animTime <= 0){
+                if(subAnim.boxEnd > 0) anim->boxEnd = subAnim.boxEnd;
+                anim->letterCount = subAnim.letterCount;
+                break; 
+            }
+        }
+    }
+    else if (box->token){
+        float timeToBox = boxWriteTime(*box);
+        float ratio = subAnim.animTime / timeToBox;
+        if (ratio > 1.0f){
+            DrawTextEx(font,box->token->text,drawPos,fontSize,spacing,color);
+            return;
+        }
+        int cpCount = 0;
+        int *cps = LoadCodepoints(box->token->text, &cpCount);
+        anim->letterCount = (cpCount >= 0) ? cpCount : 0;
+        int target = (int)(ratio * (float)cpCount);
+        if (target >= cpCount) target = cpCount;
+        if (target == 0) { UnloadCodepoints(cps); return; }
+        char out[1024];        
+        int outLen = 0;
+        out[0] = '\0';
+        for (int i = 0; i < target; i++){
+            int bytes = 0;
+            const char *u8 = CodepointToUTF8(cps[i], &bytes);
+            if (!u8 || bytes <= 0) continue;
+            if (outLen + bytes >= (int)sizeof(out) - 1) break; // éviter overflow
+            memcpy(out + outLen, u8, bytes);
+            outLen += bytes;
+            out[outLen] = '\0';
+        }
+        UnloadCodepoints(cps);
+        DrawTextEx(font, out, drawPos, fontSize, spacing, color);
+    }
+    else if(box->isLine){
+        DrawLineEx((Vector2) {drawPos.x,drawPos.y}, (Vector2) {drawPos.x + box->width, drawPos.y},box->size,color);
+    }
+    else if(box->isImage){
+        Rectangle src = (Rectangle){0,0,(float)box->texPtr->width,(float)box->texPtr->height};
+        Rectangle dst = (Rectangle){drawPos.x, drawPos.y, box->imgW, box->imgH};
+        rmviRotateTexture(*box->texPtr, src, dst, (Vector2){0,0}, 0.0f, WHITE);
+    }
+}
+
+// la dernière lettre d'un mot s'écrit en commencant l'audio du suivant à cause des erreurs d'arrondi :/
+void rmviDrawRenderBoxesAnimed(RenderBox *boxes,int boxCount,Vector2 basePos,Font font,float fontSize,float spacing, Color color, AnimText* anim){
+    anim->animTime += 1.0f/50.0f;
+    float timeAccum = 0.0f;
+    int lastBoxEnd = anim->boxEnd;
+    for (int i = 0; i < boxCount; i++){
+        // the time to write is lower than the time we have
+        float boxTime = boxWriteTime(boxes[i]);
+        if (timeAccum + boxTime <= anim->animTime) {
+            rmviDrawRenderBox(&boxes[i],basePos,font,fontSize,spacing,color);
+            timeAccum += boxTime;
+        }
+        else{
+            AnimText subAnim = {0};
+            subAnim.animTime = anim->animTime-timeAccum;
+            rmviDrawRenderBoxAnimed(&boxes[i],basePos,font,fontSize,spacing,color,&subAnim);
+            anim->letterCount = subAnim.letterCount;
+            anim->boxEnd = (subAnim.boxEnd > 0) ? subAnim.boxEnd : i;
+            break;
+        }
+        
+    }
+    anim->hasChanged = (lastBoxEnd != anim->boxEnd);
+}
+
+void rmviDrawRenderBoxesCenteredAnimed(RenderBox *boxes,int boxCount,Vector2 basePos,Font font,float fontSize,float spacing, Color color, AnimText* anim){
+    float *listWidth; 
+    int linesCount =rmviCalcWidthLine(boxes, boxCount,&listWidth);
+    Vector2 centeredPos = basePos;
+    centeredPos.y = basePos.y - rmviCalcHeightTotal(boxes, boxCount);
+    int endLine = 0;
+    anim->animTime += 1.0f/50.0f;
+    float timeAccum = 0.0f;
+    int lastBoxEnd = anim->boxEnd;
+    for (int i = 0; i < boxCount; i++){
+        centeredPos.x = basePos.x - listWidth[endLine]/2;
+        if(boxes[i].isEndLine) endLine ++;
+        // the time to write is lower than the time we have
+        float boxTime = boxWriteTime(boxes[i]);
+        if (timeAccum + boxTime <= anim->animTime) {
+            rmviDrawRenderBox(&boxes[i],centeredPos,font,fontSize,spacing,color);
+            timeAccum += boxTime;
+        }
+        else{
+            AnimText subAnim = {0};
+            subAnim.animTime = anim->animTime-timeAccum;
+            rmviDrawRenderBoxAnimed(&boxes[i],centeredPos,font,fontSize,spacing,color,&subAnim);
+            anim->letterCount = subAnim.letterCount;
+            anim->boxEnd = (subAnim.boxEnd > 0) ? subAnim.boxEnd : i;
+            break;
+        }
+        
+    }
+    anim->hasChanged = (lastBoxEnd != anim->boxEnd);
+    free(listWidth);
+}
+
 
 int rmviCalcWidthLine(RenderBox *boxes, int boxCount, float **outListWidth){
     float *listWidth = NULL;
@@ -887,6 +1061,37 @@ int rmviCalcWidthLine(RenderBox *boxes, int boxCount, float **outListWidth){
     return countLine;
 }
 
+int rmviCalcHeightLine(RenderBox *boxes, int boxCount, float **outListHeight){
+    float *listHeight = NULL;
+    float height = 0.0f;
+    int lineCap = 0;
+    int countLine = 0;
+
+    if (outListHeight) *outListHeight = NULL;
+    if (!boxes || boxCount <= 0 || !outListHeight) return 0;
+    for (int i = 0; i < boxCount; i++) {
+        height = max(height, boxes[i].height);
+        if (boxes[i].isEndLine || i == (boxCount - 1)) {
+            if (countLine > 0) height += INTERLIGNE * boxes[i].size;
+            RMVI_PUSH(listHeight, countLine, lineCap, float, height);
+            height = 0.0f;
+        }
+    }
+
+    *outListHeight = listHeight;
+    return countLine;
+}
+
+float rmviCalcHeightTotal(RenderBox *boxes, int boxCount){
+    float *listHeight = NULL;
+    int countLine = rmviCalcHeightLine(boxes, boxCount, &listHeight);
+    float totalHeight = 0.0f;
+    for (int i = 0; i < countLine; i++){
+        totalHeight += listHeight[i];
+    }
+    free(listHeight);
+    return totalHeight;
+}
 
 
 void rmviGetCustomFont(const char *path, float fontSize) {
@@ -998,7 +1203,6 @@ void rmviWriteLatexLeftCenteredClassic(const char *latex, Vector2 *position) {
 }
 // on va centrée en x mais pas en y
 void rmviWriteLatexLeftCentered(const char *latex, Vector2 *position, float sizeText, float spacing, Color color, Font font) {
-    printf("Fonction rmviWriteLatexLeftCentered à implémenter");
     exit(EXIT_FAILURE);
 }
 // Dessine le text comme si on ecrivait en latex mais il faut remplacer les backslash par /
@@ -1010,112 +1214,96 @@ void rmviWriteLatex(const char *latex, Vector2 *position, float sizeText, float 
     rmviDrawRenderBoxes(boxes, boxCount, *position, font, sizeText, spacing, color);
 }
 
-// coupe une chaine de caractère séparé par par de // ou \n en list de chaine de caractère
-char **rmviSplitText(const char *text) {
-    if (!text) return NULL;
-    size_t capacity = 8;
-    size_t count = 0;
-    char **result = malloc(capacity * sizeof(char*));
-    if (!result) return NULL;
-    const char *p = text;
-    const char *start = p;
-    while (*p) {
-        if ((p[0] == '/' && p[1] == '/') || *p == '\n') {
-            const char *end = p;
-            size_t len = (size_t)(end - start);
-            if (len > 0) {
-                if(start[0] == ' ') {
-                    start++;
-                    len--;
-                }
-                if( start[len - 1 ] == ' ') len --;
-                char *segment = malloc(len + 1);
-                memcpy(segment, start, len);
-                segment[len] = '\0';
-                if (count >= capacity) {
-                    capacity *= 2;
-                    result = realloc(result, capacity * sizeof(char*));
-                }
-                result[count++] = segment;
-            }
-            // avancer start après le séparateur
-            if (p[0] == '/' && p[1] == '/')
-                p += 2;
-            else
-                p += 1;
-            start = p;
-        } else {
-            p++;
-        }
+int isBlankLine(const char *line){
+    while (*line)
+    {
+        if (*line != ' ' && *line != '\t' &&
+            *line != '\n' && *line != '\r')
+            return 0;
+        line++;
     }
-    if (p > start) {
-        size_t len = (size_t)(p - start);
-        char *segment = malloc(len + 1);
-        memcpy(segment, start, len);
-        segment[len] = '\0';
-        if (segment[0] == ' ')
-            memmove(segment, segment + 1, strlen(segment));
-        if (count >= capacity) {
-            capacity *= 2;
-            result = realloc(result, capacity * sizeof(char*));
-        }
-        result[count++] = segment;
-    }
-    // terminer le tableau par NULL
-    result[count] = NULL;
-    return result;
+    return 1;
 }
 
+Lecture rmviGetLecture(const char *path){
+    Lecture lecture;
+    lecture.path = path;
+    lecture.content = NULL;
+    lecture.oldParagraph = -1;
+    lecture.currentParagraph = 0;
+    return lecture;
+}
 
-void rmviWriteAnimText(const char *text, Vector2 position, float size, Color color,
-                       int frameStart, int currentFrame) {
-    if (text == NULL || *text == '\0') return;
-    int charsToWrite = currentFrame - frameStart;
-    if (charsToWrite <= 0) return;
-    int byteCount = 0;
-    int charCount = 0;
-    // Avancer jusqu’au bon nombre de caractères complets
-    while (text[byteCount] != '\0' && charCount < charsToWrite) {
-         if (text[byteCount] == '/') {
-            // commandes LaTeX spéciales
-            if (strncmp(&text[byteCount+1], "nu", 2) == 0) {
-                byteCount += 3; // saute "/nu"
-                charCount++;    // compte comme 1 caractère
+char *readParagraphFromFile(const char *path, int targetParagraph){
+    FILE *file = fopen(path, "r");
+    if (!file) return NULL;
+    char line[MAX_LINE];
+    char temp[MAX_PARAGRAPH];
+    temp[0] = '\0';
+
+    int currentParagraph = 0;
+    int hasContent = 0;
+
+    while (fgets(line, sizeof(line), file))
+    {
+        if (isBlankLine(line))
+        {
+            if (hasContent)
+            {
+                if (currentParagraph == targetParagraph)
+                {
+                    fclose(file);
+                    char *result = (char*)malloc(strlen(temp) + 1);
+                    if (!result) return NULL;
+                    strcpy(result, temp);
+                    return result;
+                }
+
+                temp[0] = '\0';
+                hasContent = 0;
+                currentParagraph++;
             }
-            else if (strncmp(&text[byteCount+1], "int", 3) == 0) {
-                byteCount += 4; // saute "/int"
-                charCount++;
-            }
-            else if (strncmp(&text[byteCount+1], "begin(", 6) == 0) {
-                // consommer jusqu'à la ')'
-                byteCount += 7;
-                while (text[byteCount] != ')' && text[byteCount] != '\0') byteCount++;
-                if (text[byteCount] == ')') byteCount++;
-                charCount++; // on considère le begin comme un "bloc"
-            }
-            else if (strncmp(&text[byteCount+1], "end(", 4) == 0) {
-                byteCount += 5;
-                while (text[byteCount] != ')' && text[byteCount] != '\0') byteCount++;
-                if (text[byteCount] == ')') byteCount++;
-                charCount++;
-            }
-            else {
-                // inconnu → afficher juste '/'
-                byteCount++;
-                charCount++;
-            }
-        } 
-        else {
-            // caractère normal UTF-8
-            int charLen = utf8_char_len((unsigned char)text[byteCount]);
-            byteCount += charLen;
-            charCount++;
+        }
+        else{
+            hasContent = 1;
+            size_t need = strlen(temp) + strlen(line) + 1;
+            if (need < MAX_PARAGRAPH)
+                strcat(temp, line);
         }
     }
-    // Copier uniquement les bytes nécessaires
-    char *subText = (char *)malloc(byteCount + 1);
-    memcpy(subText, text, byteCount);
-    subText[byteCount] = '\0';
-    rmviWriteLatex(subText, &position, size, size / RATIO_SPACE, color, mathFont);
-    free(subText);
+    if (hasContent && currentParagraph == targetParagraph)
+    {
+        char *result = (char*)malloc(strlen(temp) + 1);
+        if (!result) { fclose(file); return NULL; }
+        strcpy(result, temp);
+        fclose(file);
+        return result;
+    }
+
+    fclose(file);
+    return NULL;
+}
+
+int lectureLoadParagraph(Lecture *lecture, int paragraphIndex)
+{
+    if (!lecture || !lecture->path) return 0;
+
+    char *p = readParagraphFromFile(lecture->path, paragraphIndex);
+    if (!p) return 0;
+
+    // update state
+    lecture->oldParagraph = lecture->currentParagraph;
+    lecture->currentParagraph = paragraphIndex;
+
+    // replace content
+    if (lecture->content) free(lecture->content);
+    lecture->content = p;
+
+    return 1;
+}
+
+int readScenario(Lecture *lecture){
+    if (!lecture || !lecture->path) return 0;
+    if (lecture->oldParagraph != lecture->currentParagraph) return lectureLoadParagraph(lecture, lecture->currentParagraph);
+    return 0;
 }

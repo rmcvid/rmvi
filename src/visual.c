@@ -325,7 +325,7 @@ void rmviRotateText(const char *text, Vector2 position, Vector2 origin, float ro
     rlPopMatrix();
 }
 
-// Create a carthesian system with an origin, the size is the half long and unit place the 
+// Create a carthesian system with an origin, the size is the half long and unit place the size
 rmviCarthesian rmviGetCarthesian(Vector2 origin, Vector2 size, Vector2 unit) {
     rmviCarthesian carthesian;
     carthesian.origin = origin;
@@ -745,6 +745,26 @@ float sampleCosTheta(float a, float beta_e) {
 rmviPlanet rmviGetPlanet(Vector2 position, float mass, Vector2 velocity, Vector2 force, Texture2D texture, float height){
     rmviPlanet planet = { .features = { position, mass, velocity, force }, .visual = { texture, height, height } };
     return planet;
+}
+
+void rmviAddDash2(rmviDash2 *dashPlanet,int count, int countFrame, int step, rmviDynamic2D *features, Vector2 center, Vector2 speed){
+    int i;
+    if ((int) countFrame%step == 0){   
+        i = (int)(countFrame/step)%count;
+        dashPlanet[i] = (rmviDash2){Vector2Add(features->position, Vector2Scale(center,-1)), Vector2Add(features->velocity, Vector2Scale(speed,-1))};
+    }
+}
+void rmviDrawDash2Fast(rmviDash2 *dashPlanet, Vector2 center, Color color, float scale, int n) {
+    rlBegin(RL_LINES);
+    rlColor4ub(color.r, color.g, color.b, color.a);
+    for (int i = 0; i < n; i++) {
+        Vector2 start, end;
+        start = Vector2Add(Vector2Scale(center,  scale), Vector2Scale(dashPlanet[i].position, scale));
+        end = Vector2Add(start, Vector2Scale(Vector2Normalize(dashPlanet[i].velocity), 10.0f));
+        rlVertex2f(GetScreenWidth()/2.0f + start.x, GetScreenHeight()/2.0f + start.y);
+        rlVertex2f(GetScreenWidth()/2.0f + end.x, GetScreenHeight()/2.0f + end.y);
+    }
+    rlEnd();
 }
 
 rmviPlanet3D rmviGetPlanet3D(Vector3 position, float mass, Vector3 velocity, Vector3 force, const char* modelPath){

@@ -12,8 +12,7 @@ Les nécessités
 /item Développement d'un pseudo latex permettant la rédaction en latex directement dans la scène
 /end(itemize)
 
-Idée première de vidéo astronomie et transformée de Fourier//
-En quelques mots
+Idée première de vidéo astronomie et transformée de Fourier en quelques mots
 /begin(itemize)
 /item Géocentrisme ==>/ description de la trajectoire des planètes par des cycloïdes
 /item Pourquoi des cercles sur des cercles permettent de définir ces trajectoires ?
@@ -22,4 +21,4 @@ En quelques mots
 /end(itemize)
 
 
-Autre projet pour lequel le texte est aboutit c'est l'ilot de stabilité.
+/left Autre projet pour lequel le texte est aboutit c'est l'ilot de stabilité.

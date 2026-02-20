@@ -17,6 +17,7 @@ Certaines modification ont été apportée dans raudio.c et raylib.h. Les modifi
     - Les n-uple fraction | n > 2 n'ont pas un affichage incroyable
   - L'interligne lorsqu'il y'a une fraction grande est probablement mal géré
   - Il faut ajouter les begin(equation) avec un centering et potentiellement un align qu'on pourrait mettre en /align. A voir
+  - Ajouter /playaudio
 
 ### text2video
 Etablir un txt qui transformera le tout en vidéo celui ci devrait faire lien entre numero de frame et temps irl. Ensuite le fichier text doit pouvoir etre lu par une fonction qui transforme le fichier txt en vidéo mp4.
@@ -26,6 +27,7 @@ Etablir un txt qui transformera le tout en vidéo celui ci devrait faire lien en
   - Definir les mouvement de la camera pour bien afficheret  visionner les mouvement des planètes. Pseudo 2D ==> épicicloides
   - Permettre d'accellerer le temps sans diminiuer la qualité de calcul ==> faire les calculs par step et afficher tous les x steps
   - Ajouter une ligne qui trace l'orbite.
+  - Pouvoir modifier l'écoulement du temps sans pour autant modifier 
 
 
 ### Faire la vidéo sur la décomposition de fourier ( short?).

@@ -7,6 +7,7 @@
 #include "text2Latex.h"
 #include "fft_wrapper.h"
 #include "cJSON.h"
+#include "audio.h"
 
 
 typedef struct {
@@ -117,10 +118,10 @@ typedef struct rmviPlanet3D{
 }rmviPlanet3D;
 
 
-typedef struct rmviDash{
+typedef struct rmviDash2{
     Vector2 position;
     Vector2 velocity;
-} rmviDash;
+} rmviDash2;
 
 typedef struct {
     double *x;
@@ -222,7 +223,8 @@ Color GetAverageColor(Texture2D texture);
 // ----------------------------- DYNAMICS 2D AND PLANETS -----------------------------
 rmviPlanet rmviGetPlanet(Vector2 position, float mass, Vector2 velocity, Vector2 force, Texture2D texture, float height);
 void rmviGravityRepulsion(rmviDynamic2D **features, int n);
-
+void rmviAddDash2(rmviDash2 *dashPlanet,int count, int countFrame, int step, rmviDynamic2D *features, Vector2 center, Vector2 speed);
+void rmviDrawDash2Fast(rmviDash2 *dashPlanet, Vector2 center, Color color, float scale, int n);
 
 // ----------------------------- DYNAMICS 3D AND PLANETS -----------------------------
 rmviPlanet3D rmviGetPlanet3D(Vector3 position, float mass, Vector3 velocity, Vector3 force, const char* modelPath);

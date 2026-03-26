@@ -2,6 +2,7 @@
 #define TEXT2LATEX_H
 
 #include "raylib.h"   // pour Vector2, Font, Color, etc.
+#include "rmviMath.h"
 #include <string.h>  // pour strlen, strncmp, etc.
 extern Font mathFont;
 typedef enum {
@@ -73,7 +74,8 @@ typedef struct RenderBox {
     bool isPositionned;         // possibly to delete to see
     float width;                // width of the box, can be 0 if isImage and fit == FIT_NORENDER  fit still need ?
     float height;       
-    Token *token;               // token take the text and the type
+    Token token;                // token take the text and the type
+    bool hasToken;
     float size;                 // is the font size
     struct RenderBox *items;    // list of children
     int itemCount;              // number of children
@@ -85,8 +87,23 @@ typedef struct RenderBox {
     float imgW, imgH;           // dimension de l'image à afficher
     ImageFit fit;               // pour les images, comment gérer les dimensions du renderbox
     float time;                 // pour les animations sert au break, temps d'apparition du box
+    float sizeText;
+    float spacing;
+    Font font;
+    Color color;
+    bool addSpace;
 } RenderBox;
 
+typedef struct {
+    Color color;
+    float sizeText;
+    float spacing;
+    float interline;
+    float widthMax;
+    bool addSpace;
+    int miseEnPage;
+    Font font;
+} State;
 
 typedef struct Depth{
     int brace;
@@ -115,36 +132,37 @@ typedef struct Lecture{
 
 
 void rmviGetCustomFont(const char *path, float fontSize);
-void rmviWriteLatex(const char *latex, Vector2 *position, float sizeText, float spacing, Color color, Font font);
-float rmviCalcTextWidth(const char *latex, Font font, float sizeText, float spacing);
+void rmviWriteLatex(const char *latex, Vector2 *position, State *state);
+void rmviWriteLatexClassic(const char *latex, Vector2 *position);
 static int utf8_char_len(unsigned char c);
 static int copy_utf8_char(char *dst, const char *src);
-char *rmviGetEnv(int *i, const char *latex);
-int rmviLenItem(const char *latex, int start);
-float rmviCalcItemizeHeight(const char *body, int start, Font font, float sizeText, float spacing, bool isNested);
-char **rmviSplitText(const char *text);
-void rmviWriteAnimText(const char *text, Vector2 position, float size, Color color,int frameStart, int currentFrame);
-void rmviWriteLatexLeftCentered(const char *latex, Vector2 *position, float sizeText, float spacing, Color color, Font font);
+void rmviWriteLatexLeftCentered(const char *latex, Vector2 *position, State *state);
 void rmviWriteLatexLeftCenteredClassic(const char *latex, Vector2 *position);
-float rmviCalcEquationHeight(const char *latex, Font font, float sizeText, float spacing);
 
+State rmviGetState(float sizeText,float spacing,float interline,float widthMax,bool addSpace,int miseEnPage, Font font,Color color);
+State rmviGetStateClassic();
+State copyStateRatio(State *state, float ratio);                            // pas besoin
+RenderBox getRenderBox(State *state);                                       // pas besoin
 int rmviTokenizeLatex(const char *latex, Token *tokens, int maxTokens);
-Vector2 rmviMeasureToken(Token *token, Font font, float fontSize, float spacing, bool addSpace);
-int rmviBuildRenderBoxes(Token *tokens, int tokenCount, RenderBox *boxes, Font font, float fontSize,float spacing);
-void rmviDrawRenderBoxes( RenderBox *boxes, int count, Vector2 basePos, Font font, float fontSize, float spacing, Color color);
+Vector2 rmviMeasureToken(Token *token, State *state);
+int rmviBuildRenderBoxes(Token *tokens, int tokenCount, RenderBox *boxes, State *state);
+void rmviDrawRenderBoxes( RenderBox *boxes, int count, Vector2 basePos);
 char* rmviReadSymbolText(Token *tokens, int tokenCount, int *index,char openChar, char closeChar);
-RenderBox rmviMain2Box(Token *tokens,int tokenCount,Font font,float fontSize,float spacing, int *index);
+RenderBox rmviMain2Box(Token *tokens,int tokenCount, State *state, int *index);
 bool depthContinue(const Depth *depth);
 bool depthUpdate(Depth *depht, Token *tokens, int *index);
-RenderBox rmviBuildBrace(Token *tokens, int *index, int tokenCount, Font font, int fontSize, int spacing);
+RenderBox rmviBuildBrace(Token *tokens, int *index, int tokenCount, State *state);
 void rmviLineSkip(Vector2* cursor, float ratio, float fontSize, float height);
-int rmviCalcWidthLine(RenderBox *boxes, int boxCount, float **outListWidth);
-void rmviDrawRenderBoxesCentered(float *listWidth,float height, RenderBox *boxes, int boxCount, Vector2 centerPos,Font font,float fontSize,float spacing,Color color);
+void rmviCalcWidthLine(RenderBox *boxes, int boxCount, rmviFloatList *floatList);
+float rmviCalcLargestLine(rmviFloatList *listWidth);
+float rmviCalcWidthLatex(const char *latex,  State *state);
+float rmviCalcWidthLatexClassic(const char *latex);
+void rmviDrawRenderBoxesCentered(rmviFloatList *listWidth,float height, RenderBox *boxes, int boxCount, Vector2 centerPos);
 float rmviCalcHeightTotal(RenderBox *boxes, int boxCount);
-void rmviDrawRenderBoxesAnimed(RenderBox *boxes,int boxCount,Vector2 basePos,Font font,float fontSize,float spacing, Color color, AnimText *anim);
+void rmviDrawRenderBoxesAnimed(RenderBox *boxes,int boxCount,Vector2 basePos, AnimText *anim);
 AnimText* initAnimText();
 void resetAnimText(AnimText *anim);
-void rmviDrawRenderBoxesCenteredAnimed(RenderBox *boxes,int boxCount,Vector2 basePos,Font font,float fontSize,float spacing, Color color, AnimText* anim);
+void rmviDrawRenderBoxesCenteredAnimed(RenderBox *boxes,int boxCount,Vector2 basePos, AnimText* anim);
 
 int readScenario(Lecture *lecture);
 Lecture rmviGetLecture(const char *path);

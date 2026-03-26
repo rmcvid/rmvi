@@ -4,29 +4,73 @@
 #include "raylib.h"
 #include "raymath.h"
 #include "rlgl.h"
+#include "rmviMath.h"
 #include "text2Latex.h"
 #include "fft_wrapper.h"
 #include "cJSON.h"
 #include "audio.h"
 
 
+enum {
+    ARROWDIRECT,
+    ARROWSQUARE
+};
+
+enum {
+    RIGHT,
+    BOT,
+    LEFT,
+    TOP,
+};
+
+typedef struct{
+    RenderBox *data;
+    int count;
+    int capacity;
+} rmviRenderBoxList;
+
+typedef struct{
+    Token *data;
+    int count;
+    int capacity;
+}rmviTokenList;
+
+// the origin defines the center of the plot; the scale defines the unit scale and the size defines arrows length
 typedef struct {
+    Vector2 origin;         // position of the carthesian
+    Vector2 unit;           // unit
+    Vector2 size;           // size of the carthesian
+    Vector2 sizeUnit;       // size of a square grid
+    char xlabel[32];
+    char ylabel[32];
+    char title[512];
+    bool legend;
+    float thikness;
+    float sizeText;
+    float spacing;
+} rmviCarthesian;
+
+typedef struct{
+    Color *color;
+    char **name;
+    int count;
+    int capacity;
+    Vector2 position;
+    float sizeText;
+} rmviLegend;
+
+typedef struct {
+    // ici la question de la mémoire est à regarder
     Rectangle outerRect;
     Rectangle innerRect;
     float lineThick;
     Color outerColor;
     Color innerColor;
-    const char *text;
-    Font font;
+    rmviRenderBoxList renderList;
+    State *state;
     float roundness;
+    int num;    // utilisé pour chainer facilement
 } rmviFrame;
-
-// the origin defines the center of the plot; the scale defines the unit scale and the size defines arrows length
-typedef struct {
-    Vector2 origin;
-    Vector2 unit;
-    Vector2 size;
-} rmviCarthesian;
 
 typedef struct {
     int n;                // nombre total de frames
@@ -45,30 +89,30 @@ typedef struct rmviAtom {
     float lambda;
     struct rmviAtom *daughter; // isotope fils (NULL si stable)
     bool alive;
-    Vector2 center;
-    Vector2 speed;
+    Vector2d center;
+    Vector2d speed;
 } rmviAtom;
 
 typedef struct rmviParticle {
     rmviFrame *frame;
-    Vector2 center;
-    Vector2 speed;
+    Vector2d center;
+    Vector2d speed;
     float size;
     float lifespan;
 } rmviParticle;
 
 typedef struct rmviDynamic2D{
-    Vector2 position;
+    Vector2d position;
     double mass;
-    Vector2 velocity;
-    Vector2 force;
+    Vector2d velocity;
+    Vector2d force;
 } rmviDynamic2D;
 
 typedef struct rmviDynamic3D{
-    Vector3 position;
+    Vector3d position;
     double mass;
-    Vector3 velocity;
-    Vector3 force;
+    Vector3d velocity;
+    Vector3d force;
     float radius;
 } rmviDynamic3D;
 
@@ -123,6 +167,11 @@ typedef struct rmviDash2{
     Vector2 velocity;
 } rmviDash2;
 
+typedef struct rmviDash3{
+    Vector3 position;
+    Vector3 velocity;
+} rmviDash3;
+
 typedef struct {
     double *x;
     double *y;
@@ -152,11 +201,26 @@ typedef struct {
 } Video;
 
 
+typedef struct{
+    int n;                  // nombre total de frames
+    int depth;              // profondeur max approximative
+    rmviFrame **frames;     // tableau de frames
+    int *numeros;           // numéro associé à chaque frame
+    rmviIntList *parents;   // parents[i] = liste des parents du frame i
+    rmviIntList *enfants;   // enfants[i] = liste des enfants du frame i
+} rmviGraph;
+
+#define G 6.6743015e-11
+
 
 typedef float (*MathFunction)(float);
 
+void rmviDrawTextMid(const char *text, Rectangle rec, State *state);
 
-void rmviDrawTextMid(const char *text, Rectangle rec, Color color, float ratio, Font font);
+void rmviRenderBoxListInit(rmviRenderBoxList *list);
+rmviRenderBoxList rmviGetRenderBoxList(const char *latex, State *state);
+void rmviRenderBoxListFree(rmviRenderBoxList *list);
+bool rmviRenderBoxListReserve(rmviRenderBoxList *list, int newCapacity);
 
 // ----------------------------- RECTANGLES -----------------------------
 Rectangle rmviGetRectangleCenteredRatio(float x, float y, float ratio_x, float ratio_y);
@@ -165,19 +229,19 @@ void rmviRotateRectangle(Rectangle rec, Vector2 origin, float rotation, Color co
 // ----------------------------- TEXT AND FRAMES -----------------------------
 
 
-void rmviRotateText(const char *text, Vector2 position, Vector2 origin, float rotation, float fontSize, Color color, Font font);
-void rmviDrawTextRec(const char *text, Rectangle rec, Color color, float ratio, float ratioWidth, float ratioHeight, Font font);
-void rmviDrawTextPro(const char *text, Rectangle rec, Color color, float ratio, float ratioWidth, float ratioHeight, Font font);
+void rmviRotateText(const char *text, Vector2 position, Vector2 origin, float rotation, State *state);
+void rmviDrawTextRec(const char *text, Rectangle rec, float ratio, float ratioWidth, float ratioHeight,State *state);
 void rmviMyDrawText(const char *text, Vector2 position, float size, Color color);
 
-rmviFrame rmviGetFrame(float posX, float posY, float width, float height, float lineThick, Color innerColor, Color outerColor, const char *text, Font font, float roundness);
-rmviFrame rmviGetFrameBG(float posX, float posY, float width, float height, float lineThick, const char *text, Font font);
-rmviFrame rmviGetFrameBGCentered(float posX, float posY, float ratio_x, float ratio_y, float lineThick, const char *text, Font font);
-rmviFrame rmviGetFrameBGCentered(float posX, float posY, float ratio_x, float ratio_y, float lineThick, const char *text, Font font);
-rmviFrame rmviGetRoundFrameBGCentered(float posX, float posY, float ratio, float lineThick, const char *text, Font font);
-void rmviDrawFrame(rmviFrame frame, float ratio);
+rmviFrame rmviGetFrame(float posX, float posY, float width, float height, float lineThick, Color innerColor, Color outerColor, const char *text, State *state, float roundness);
+rmviFrame rmviGetFrameBG(float posX, float posY, float width, float height, float lineThick, const char *text, State *state);
+rmviFrame rmviGetFrameBGCentered(float posX, float posY, float ratio_x, float ratio_y, float lineThick, const char *text, State *state);
+rmviFrame rmviGetFrameBGCentered(float posX, float posY, float ratio_x, float ratio_y, float lineThick, const char *text, State *state);
+rmviFrame rmviGetRoundFrameBGCentered(float posX, float posY, float ratio, float lineThick, const char *text, State *state);
+rmviFrame rmviGetFrameFromText(float posX, float posY, const char *text, State *state);
+void rmviDrawFrame(const rmviFrame *frame);
 void rmviDrawFramePro(rmviFrame frame, float ratio, float rotation, Vector2 origin, Vector2 translationVector);
-void rmviUpdateFrame(rmviFrame *frame, float posX, float posY, float width, float height, float lineThick, Color innerColor, Color outerColor, const char *text, Font font);
+void rmviUpdateFrame(rmviFrame *frame, float posX, float posY, float width, float height, float lineThick, Color innerColor, Color outerColor,State *state);
 void rmviZoomFrame(rmviFrame *frame, float rate);
 void rmviRewriteFrame(rmviFrame *frame, const char *text); 
 
@@ -185,16 +249,38 @@ void rmviRewriteFrame(rmviFrame *frame, const char *text);
 rmviTree *rmviCreateTree(void);
 int getDepth(rmviTree *tree, int index);
 
+// ----------------------------- rmviGraph ---------------------------
+rmviGraph *rmviGetGraph(void);
+int rmviGetDepth(const rmviGraph *graph, int index);
+bool rmviAddEdge2Graph(rmviGraph *graph, int parentIndex, int childIndex);
+void rmviAddFrame2Graph(rmviGraph *graph, rmviFrame *frame, const rmviIntList *parents);
+void rmviAddFrame2GraphSingleParent(rmviGraph *graph, rmviFrame *frame, int parentIndex);
+void rmviPositioningGraph(rmviGraph *graph, float spaceTreeRatioX, float spaceTreeRatioY);
+void rmviPositioningGraphAverageParents(rmviGraph *graph, float spaceTreeRatioX, float spaceTreeRatioY);
+void rmviZoomGraph(rmviGraph *graph, float zoomFactor);
+void rmviDrawGraph(rmviGraph *graph, int arrows);
+void rmviFreeGraph(rmviGraph *graph);
+void rmviDrawGraphSquareWrite(rmviGraph *graph, float leftRatio, const char **listText, Color color, float ratioWriteArrow, float size) ;
+
 // ----------------------------- CARTHESIAN AND ARROWS -----------------------------
 void rmviDrawArrow2(Vector2 start, Vector2 end, float arrowSize, float ratio, Color color);
 rmviCarthesian rmviGetCarthesian(Vector2 origin, Vector2 size, Vector2 unit);
+void rmviSetCarthesianAxesLabel(rmviCarthesian *carthesian,const char *xlabel,const char* ylabel);
+void rmviSetCarthesianTitle(rmviCarthesian *carthesian,const char *title);
+rmviLegend rmviGetLegend(int capacity);
+void rmviAddLegend(rmviLegend *legend, Color color, const char *name);
+void rmviWriteTitle(rmviCarthesian carthesian,float sizeText, float spacing,Font font,Color color);
+void rmviWriteTitleClassic(rmviCarthesian carthesian);
+void rmviDrawLegend(rmviCarthesian carthesian, rmviLegend *legend);
 void rmviDrawCarthesianFull(rmviCarthesian carthesian, float arrowSize, float ratio, Color color, bool drawTicks, bool drawLines);
 void rmviUpdateCarthesian(rmviCarthesian *carthesian, Vector2 origin, Vector2 unit, Vector2 size);
-void rmviDrawTick(rmviCarthesian carthesian, float length, Color color);
+void rmviWriteAxis(rmviCarthesian carthesian,float sizeText, float spacing,Font font,Color color);
+void rmviDrawTick(rmviCarthesian carthesian, float length,float thinkess, Color color);
 void rmviDrawGrids(rmviCarthesian carthesian, Color color);
 void rmviDrawFunction(rmviCarthesian carthesian, MathFunction fct, Color color);
 void rmviDraw2Parametric(rmviCarthesian carthesian,float fx(float,float),float fy(float,float),float radius, float tMin, float tMax, int n, Color color);
 void rmviDrawTrigo(rmviCarthesian carthesian, float x, float y, Color color, float radius);
+void rmviDrawList2(rmviCarthesian carthesian, const float *listX, const float *listY, int count, bool line, Color color);
 void rmviPositioningTree(rmviTree *tree,float spaceTreeRatioX, float spaceTreeRatioY);
 
 
@@ -211,8 +297,8 @@ void rmviDrawTreeSquareWrite(rmviTree *tree, float leftRatio, const char **listT
 void rmviAtomDecay(rmviAtom *atom);
 bool rmviDesintegration(rmviAtom *atom, float deltaTime);
 void rmviAtomUpdate(rmviAtom *atom);
-rmviAtom rmviGetAtomSpeed(rmviFrame *frame, const char *nature, float lifespan, rmviAtom *daughter, Vector2 speed);
-rmviFrame rmviGetElectron(float posX, float posY);
+rmviAtom rmviGetAtomSpeed(rmviFrame *frame, const char *nature, float lifespan, rmviAtom *daughter, Vector2d speed);
+rmviFrame rmviGetElectron(float posX, float posY, State *state);
 
 // ----------------------------- Texture -----------------------------
 void rmviRotateTexture(Texture2D texture, Rectangle source, Rectangle dest, Vector2 origin, float rotation, Color tint);
@@ -221,15 +307,16 @@ void rmviRotateTexture(Texture2D texture, Rectangle source, Rectangle dest, Vect
 Color GetAverageColor(Texture2D texture);
 
 // ----------------------------- DYNAMICS 2D AND PLANETS -----------------------------
-rmviPlanet rmviGetPlanet(Vector2 position, float mass, Vector2 velocity, Vector2 force, Texture2D texture, float height);
+rmviPlanet rmviGetPlanet(Vector2d position, double mass, Vector2d velocity, Vector2d force, Texture2D texture, float height);
 void rmviGravityRepulsion(rmviDynamic2D **features, int n);
 void rmviAddDash2(rmviDash2 *dashPlanet,int count, int countFrame, int step, rmviDynamic2D *features, Vector2 center, Vector2 speed);
 void rmviDrawDash2Fast(rmviDash2 *dashPlanet, Vector2 center, Color color, float scale, int n);
 
 // ----------------------------- DYNAMICS 3D AND PLANETS -----------------------------
-rmviPlanet3D rmviGetPlanet3D(Vector3 position, float mass, Vector3 velocity, Vector3 force, const char* modelPath);
+rmviPlanet3D rmviGetPlanet3D(Vector3d position, float mass, Vector3d velocity, Vector3d force, const char* modelPath);
 void rmviGravityRepulsion3D(rmviDynamic3D **features, int n);
-
+void rmviAddDash3(rmviDash3 *dashPlanet,int count, int countFrame, int step, rmviDynamic3D *features, Vector3 center, Vector3 speed);
+void rmviDrawDash3Fast(const rmviDash3 *dashList, int count,float dashLen, float scale,Color color);
 // ----------------------------- Fourrier -----------------------------
 void rmviDrawFourier(FourierCoeff *coeffs, int n, Vector2 origin, float scale, Color color, float time, Vector2 *figure);  // dessine les cercles et le tracé
 void rmviDrawFourierFigure(float countFrame, Vector2 *figure, int timeFourier, int FPS, Color color);
@@ -244,6 +331,8 @@ void rmvidrawAnime2(Anime2 *anime, Vector2 position, float scale, Color color, b
 void mp4ToTexture(const char *pathFile, const char *outDir, const char *name);
 Video LoadVideo(const char *mp4Path, const char *outDir, const char *name, float fallbackFPS);
 void PlayVideo(Video *video);
+
+// fonction pour les système solaire
 
 void UpdateCursorToggle();
 #endif // VISUAL_H

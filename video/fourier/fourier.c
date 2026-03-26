@@ -19,8 +19,8 @@
 #define SIZE_TEXT 40
 #define SIZE_SPACING SIZE_TEXT/20
 
-Vector2 centerView; // centre initial sur le soleil
-Vector2 centerSpeed;
+Vector2d centerView; // centre initial sur le soleil
+Vector2d centerSpeed;
 int space_count = 0;
 Color colorListPlanet[NBPLANETS];
 
@@ -106,32 +106,32 @@ void rmviUpdateGravity(rmviPlanet **planets, int n) {
     rmviGravityRepulsion(featurePtrs, n);
     free(featurePtrs);
 }
-Vector2 rmviVectorCrossAngle(float norm, float angle){
-    return Vector2Scale((Vector2){cos((angle)/360.0f *2* PI),sin(angle/360.0f * 2* PI)},norm);
+Vector2d rmviVectorCrossAngle(double norm, double angle){
+    return Vector2dScale((Vector2d){cos((angle)/360.0f *2* PI),sin(angle/360.0f * 2* PI)},norm);
 }
 
 void initialisePlanets(){
-    sun = rmviGetPlanet(VECTOR20, 1.989e30, VECTOR20, VECTOR20, LoadTexture(IMAGE_PATH"sun.jpg"), PLANET_SCALE*log10(696342));
-    mercury = rmviGetPlanet(rmviVectorCrossAngle(69.816e9,-25.49074), 3.285e23,rmviVectorCrossAngle(38.86e3, 90 - 25.49074), VECTOR20, LoadTexture(IMAGE_PATH"mercury.jpg"), PLANET_SCALE*log10(2439));
-    venus = rmviGetPlanet(rmviVectorCrossAngle(108.943e9,28.58579), 4.867e24, rmviVectorCrossAngle(34.789e3,90 +28.58579), VECTOR20, LoadTexture(IMAGE_PATH"venus.jpg"), PLANET_SCALE*log10(60518));
-    earth = rmviGetPlanet(rmviVectorCrossAngle(152e9,0.0), 5.972e24,rmviVectorCrossAngle(29.291e3,90), VECTOR20, LoadTexture(IMAGE_PATH"earth.jpg"), PLANET_SCALE*log10(63567));
-    mars = rmviGetPlanet(rmviVectorCrossAngle(249.230e9,-126.90635), 6.39e23, rmviVectorCrossAngle(21.975e3,90 + -126.90635), VECTOR20, LoadTexture(IMAGE_PATH"mars.jpg"), PLANET_SCALE*log10(33762));
-    jupiter = rmviGetPlanet(rmviVectorCrossAngle(778e9,-88.19334), 1.898e27, rmviVectorCrossAngle(12.448e3,90 +-88.19334), VECTOR20, LoadTexture(IMAGE_PATH"jupyter.jpg"), PLANET_SCALE*log10(69911));
-    saturn = rmviGetPlanet(rmviVectorCrossAngle(1503e9,-10.51525), 5.683e26, rmviVectorCrossAngle(9.141e3,90 -10.51525), VECTOR20, LoadTexture(IMAGE_PATH"saturn.jpg"), PLANET_SCALE*log10(58232));
+    sun = rmviGetPlanet((Vector2d){0}, 1.989e30, (Vector2d){0}, (Vector2d){0}, LoadTexture(IMAGE_PATH"sun.jpg"), PLANET_SCALE*log10(696342));
+    mercury = rmviGetPlanet(rmviVectorCrossAngle(69.816e9,-25.49074), 3.285e23,rmviVectorCrossAngle(38.86e3, 90 - 25.49074), (Vector2d){0}, LoadTexture(IMAGE_PATH"mercury.jpg"), PLANET_SCALE*log10(2439));
+    venus = rmviGetPlanet(rmviVectorCrossAngle(108.943e9,28.58579), 4.867e24, rmviVectorCrossAngle(34.789e3,90 +28.58579), (Vector2d){0}, LoadTexture(IMAGE_PATH"venus.jpg"), PLANET_SCALE*log10(60518));
+    earth = rmviGetPlanet(rmviVectorCrossAngle(152e9,0.0), 5.972e24,rmviVectorCrossAngle(29.291e3,90), (Vector2d){0}, LoadTexture(IMAGE_PATH"earth.jpg"), PLANET_SCALE*log10(63567));
+    mars = rmviGetPlanet(rmviVectorCrossAngle(249.230e9,-126.90635), 6.39e23, rmviVectorCrossAngle(21.975e3,90 + -126.90635), (Vector2d){0}, LoadTexture(IMAGE_PATH"mars.jpg"), PLANET_SCALE*log10(33762));
+    jupiter = rmviGetPlanet(rmviVectorCrossAngle(778e9,-88.19334), 1.898e27, rmviVectorCrossAngle(12.448e3,90 +-88.19334), (Vector2d){0}, LoadTexture(IMAGE_PATH"jupyter.jpg"), PLANET_SCALE*log10(69911));
+    saturn = rmviGetPlanet(rmviVectorCrossAngle(1503e9,-10.51525), 5.683e26, rmviVectorCrossAngle(9.141e3,90 -10.51525), (Vector2d){0}, LoadTexture(IMAGE_PATH"saturn.jpg"), PLANET_SCALE*log10(58232));
     saturn.visual.height = saturn.visual.width/180*95;
 }
 
 // ajoute la vitesse du centre de la vue pour avoir l'effet de suivre la terre ou du moins du centre
-void rmviUpdatePosition(rmviPlanet *planet, float dt, Vector2 centerSpeed) {
+void rmviUpdatePosition(rmviPlanet *planet, float dt, Vector2d centerSpeed) {
     // Met à jour la position et la vitesse en fonction de la force
-    Vector2 acceleration = Vector2Scale(planet->features.force, 1.0f / ((float)planet->features.mass));
-    planet->features.velocity = Vector2Add(Vector2Add(planet->features.velocity, Vector2Scale(acceleration, dt)), Vector2Scale(centerSpeed, -1.0f));
-    planet->features.position = Vector2Add(planet->features.position, Vector2Scale(planet->features.velocity, dt));
+    Vector2d acceleration = Vector2dScale(planet->features.force, 1.0f / (planet->features.mass));
+    planet->features.velocity = Vector2dAdd(Vector2dAdd(planet->features.velocity, Vector2dScale(acceleration, dt)), Vector2dScale(centerSpeed, -1.0f));
+    planet->features.position = Vector2dAdd(planet->features.position, Vector2dScale(planet->features.velocity, dt));
 }
-void UpdateCenterView( Vector2 *centerView, Vector2 newCenter, Vector2 oldCenter, float timeFrame){
-    *centerView = Vector2Add(
-    Vector2Scale(newCenter,Clamp((countFrame - frameInitCenterView)/timeFrame,0,1)),
-    Vector2Scale(oldCenter,Clamp((1 -(countFrame - frameInitCenterView)/timeFrame),0,1))
+void UpdateCenterView( Vector2d *centerView, Vector2d newCenter, Vector2d oldCenter, double timeFrame){
+    *centerView = Vector2dAdd(
+    Vector2dScale(newCenter,Clamp((countFrame - frameInitCenterView)/timeFrame,0,1)),
+    Vector2dScale(oldCenter,Clamp((1 -(countFrame - frameInitCenterView)/timeFrame),0,1))
     );
 }
 
@@ -156,10 +156,10 @@ void slideOne(void){
     rmviUpdateGravity(planets, sizeof(planets) / sizeof(planets[0]));
     for (int i = 0; i < sizeof(planets) / sizeof(planets[0]) ; i++) {
         rmviUpdatePosition(planets[i], FRAME2SEC, centerSpeed);
-        rmviAddDash2(dashList[i], MEMORY, countFrame, SPACE_DASH, &planets[i]->features, centerView, centerSpeed);
+        rmviAddDash2(dashList[i], MEMORY, countFrame, SPACE_DASH, &planets[i]->features, Vector2d2Vector2(centerView) , Vector2d2Vector2(centerSpeed));
         //rmviDrawDash(dashList[i], centerView, colorListPlanet[i]);
         rmviDrawDash2Fast(dashList[i], VECTOR20, colorListPlanet[i], i < 5 ? (UA2PIXEL / UA) : (UA2PIXEL_FAR / UA), MEMORY);
-        rmviDrawPlanet(*planets[i], centerView, i < 5 ? (UA2PIXEL / UA) : (UA2PIXEL_FAR / UA));
+        rmviDrawPlanet(*planets[i], Vector2d2Vector2(centerView), i < 5 ? (UA2PIXEL / UA) : (UA2PIXEL_FAR / UA));
     }
 }
 
@@ -233,7 +233,7 @@ int bm_visual_main(void){
     colorListPlanet[sizeof(planets) / sizeof(planets[0])];
     for (int i = 0; i < sizeof(planets) / sizeof(planets[0]); i++){ colorListPlanet[i] = GetAverageColor(planets[i]->visual.texture);}
     centerView = sun.features.position; // centre initial sur le soleil
-    centerSpeed = VECTOR20;
+    centerSpeed = (Vector2d) {0};
     int timeFourier = 10;
     Vector2 *figure = malloc(FPS * timeFourier * sizeof(Vector2));
     //rmviPointArray points = read_csv_points(IMAGE_PATH"points_fourier.csv");
@@ -250,13 +250,13 @@ int bm_visual_main(void){
     int tokenCount = rmviTokenizeLatex("Terminons par un très long mot pour voir comment le décalage se comporte genre longmotsdefou", tokens, 256); // /loadimage[scale=0.2 , fit = noRender, posY = 400, posX = 400 ]{C:/Users/ryanm/Documents/Rmvi/animation/video/solarSystem/Image/decompte/decompte_0001.jpg} // /frac{/frac{a}{b}}{/frac{c}{d}}   // /Delta t puis on continue avec cela /delta /phi /psi  // avant  aprés la frac et une deuxieme //  si on écrit après
     RenderBox boxes[256];
     float scale = 0.3;
-    int boxCount = rmviBuildRenderBoxes(tokens, tokenCount, boxes, mathFont, SIZE_TEXT, SIZE_SPACING);
-    float *listWidth;
-    int linesCount =rmviCalcWidthLine(boxes, boxCount,&listWidth);
+    State state = rmviGetState(40,2,1.2f,0.8*GetScreenWidth(),true,0,mathFont,WHITE);
+    int boxCount = rmviBuildRenderBoxes(tokens, tokenCount, boxes, &state);
+    rmviFloatList listWidth;
+    rmviCalcWidthLine(boxes, boxCount,&listWidth);
     AnimText *animText1 = initAnimText();
     audioInitKeyboard();
-    while (!WindowShouldClose())
-    {
+    while (!WindowShouldClose()){
         if(IsKeyPressed(KEY_Q)){
             anim1 = !anim1;
             countFrame = 0;

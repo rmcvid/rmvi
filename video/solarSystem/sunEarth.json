@@ -1,0 +1,42 @@
+[
+    {
+        "position": "0",
+        "name": "Sun",
+        "mass": 1.9885e30,
+        "radius_e": 696.342e3 ,
+        "phi": 0.00,
+        "Perihelion": 0, 
+        "velocity_max": 0,
+        "theta": 180,
+        "Aphelion": 0,
+        "velocity_min": 0,
+        "model_path": "sun/scene.gltf",
+        "shader_path": "sun2",
+        "rotation" : 27.28,
+        "zUp": false,
+        "inclinaison": 0,
+        "a" : 0.0,
+        "e" : 0.0,
+        "description":"mass : kg , phi is the azimute angle, theta is the angle between perihilion compared to earth, velocity is in m/s rotation are in d" 
+     
+    },
+    {   "position": "1",
+        "name": "Mercury",
+        "mass": 3.285e23,
+        "radius_e": 2.3439e3 ,
+        "phi": 0.00,
+        "Perihelion": 46.001200e9,
+        "velocity_max": 58.98e3,
+        "theta": 0.0 ,
+        "Aphelion": 69.8151567e9,
+        "velocity_min": 38.86e3,
+        "model_path": "mercure/mercury.obj",
+        "shader_path": "planet",
+        "rotation": 58.64,
+        "zUp": false,
+        "inclinaison": 0.035,
+        "a" :57.909050e9,
+        "e" : 0.2056,
+        "description":"mass : kg , phi is the azimute angle, theta is the angle between perihilion compared to earth, velocity is in m/s, a is the demi-grand axe and e the excentricity"
+    }
+]

@@ -1,6 +1,7 @@
 #include "config.h"
 
-
+int spaceCount;
+void processInput();
 int bm_visual_initialisation(void) {
     // Initialize raylib
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
@@ -36,80 +37,91 @@ int bm_visual_main(void)
     //rmviFrame frame = rmviGetFrameBGCentered(center.x*2/3, center.y, 12, 6, 10, "Square", mathFont);
     bool atom_defined = false;
     rmviAtom atom;
-    rmviFrame frame = rmviGetFrameBGCentered(center.x*2/3, center.y, 12, 6, 10, "square", mathFont);
-    rmviFrame electron = rmviGetRoundFrameBGCentered(center.x*2/3, center.y, 12, 10, "e^-", mathFont);
+    State state = rmviGetStateClassic();
+    state.color = (Color) {255,0,0,255};
+    State state2 = rmviGetStateClassic();
+    rmviFrame electron = rmviGetRoundFrameBGCentered(center.x*2/3, center.y, 12, 10, "e^-", &state);
     float ratioX = 15.0f;
     float ratioY = 7.5f;
     float lineThick = 5.0f;
-    Vector4 count = {0, 0, 0, 0};
-    float sum = 0.0f;
-    rmviCarthesian carthesian = rmviGetCarthesian(center, (Vector2){SIZEXPLOT, SIZEXPLOT/RATIOYPLOT}, (Vector2){SIZEXPLOT/UNITRATIO, SIZEXPLOT/(UNITRATIO)});
-    rmviTree *tree = rmviCreateTree();
-    rmviFrame root0 = rmviGetFrameBGCentered(center.x*6.0f/5.0f, center.y, ratioX, ratioY, lineThick, "Initial", mathFont);
-    rmviFrame root1 = rmviGetFrameBGCentered(0,0, ratioX, ratioY, lineThick, "Haut//", mathFont);
-    rmviFrame root2 = rmviGetFrameBGCentered(0, 0, ratioX, ratioY, lineThick, "Droite//", mathFont);
-    rmviFrame root3 = rmviGetFrameBGCentered(0, 0, ratioX, ratioY, lineThick, "Bas//", mathFont);
-    rmviFrame root4 = rmviGetFrameBGCentered(0, 0, ratioX, ratioY, lineThick, "Gauche//", mathFont);
-    rmviAddFrame2Tree(tree, &root0, -1);
-    rmviAddFrame2Tree(tree, &root1, 0);
-    rmviAddFrame2Tree(tree, &root2, 0);
-    rmviAddFrame2Tree(tree, &root3, 0);
-    rmviAddFrame2Tree(tree, &root4, 0);
-    const char *textArrowsTree[] = {"P(e_i -> e_h) = 0.5// test // décale trop là", "Droite", "Bas", "Gauche","test",NULL};
-    rmviPositioningTree(tree, SPACETREERATIOX, SPACETREERATIOY);
-    int space_count = 0;
+    rmviGraph *graph = rmviGetGraph();
+
+    rmviFrame root0 = rmviGetFrameFromText(center.x/8, center.y, "Interface", &state);
+    rmviIntList intList0 = {0};
+    rmviAddFrame2Graph(graph,&root0,&intList0);
+    rmviFrame distri = rmviGetFrameFromText(0,0,"Distributeur", &state2);
+    rmviIntList intListdistri = rmviGetIntList(root0.num);
+    rmviAddFrame2Graph(graph,&distri,&intListdistri);
+    rmviFrame root2 = rmviGetFrameFromText(0, 0,"Unité Centrale", &state2);
+    rmviIntList intList2 = rmviGetIntList(distri.num);
+    rmviAddFrame2Graph(graph,&root2,&intList2);
+    rmviFrame GCP2 = root2;
+    rmviAddFrame2Graph(graph,&GCP2,&intList2);
+    rmviFrame GCP3 = root2;
+    rmviAddFrame2Graph(graph,&GCP3,&intList2);
+    rmviFrame GCP4 = root2;
+    rmviAddFrame2Graph(graph,&GCP4,&intList2);
+    rmviFrame cachel2 = rmviGetFrameFromText(0, 0,"Cache L2", &state);
+    rmviIntList intListCache = rmviGetIntList(root2.num);
+    rmviFrame vram = rmviGetFrameFromText(0, 0,"VRAM", &state);
+    rmviIntList intListVram = rmviGetIntList(cachel2.num);
+    rmviAddFrame2Graph(graph,&vram,&intListVram);
+    rmviIntListAdd(&intListCache,GCP2.num);
+    rmviIntListAdd(&intListCache,GCP3.num);
+    rmviIntListAdd(&intListCache,GCP4.num);
+    rmviAddFrame2Graph(graph,&cachel2,&intListCache);
+
+    rmviFrame parametre, bleu, vert, rouge;
+    State paraState = rmviGetStateClassic();
+    State rougeState = rmviGetStateClassic();
+    State bleuState = rmviGetStateClassic();
+    State vertState = rmviGetStateClassic();
+    char buffer[256];
+    snprintf(buffer, sizeof(buffer), "Généralement // r = %d, g = %d, b = %d", paraState.color.r, paraState.color.g, paraState.color.b);
+    parametre = rmviGetFrameFromText(center.x, center.y/2, buffer, &paraState);
+    snprintf(buffer, sizeof(buffer), "rouge  = %d", rougeState.color.r);
+    rouge = rmviGetFrameFromText(center.x/2, 3*center.y/2, buffer, &rougeState);
+    snprintf(buffer, sizeof(buffer), "bleu  = %d", bleuState.color.b);
+    bleu = rmviGetFrameFromText(center.x, 3*center.y/2, buffer, &bleuState);
+    snprintf(buffer, sizeof(buffer), "vert  = %d", vertState.color.g);
+    vert = rmviGetFrameFromText(3*center.x/2, 3*center.y/2, buffer, &vertState);
+
+    spaceCount = 0;
     InitAudioDevice();              // Initialise audio
     RecordDevice rec = InitAudioRecorder("output.wav");
-
-
     while (!WindowShouldClose())
     {
         BeginTextureMode(screen);
             ClearBackground(BG);
-            if( IsKeyPressed(KEY_R)) {
-                speed = rmviRandomSpeed(&count);
+            processInput();
+            if(spaceCount == 0){
+                rmviPositioningGraph(graph,50, SPACETREERATIOY);
+                rmviDrawGraph(graph,ARROWDIRECT);
+                //rmviDrawFrame(root0);
+                /*rmviPositioningTree(tree,SPACETREERATIOX, SPACETREERATIOY);
+                rmviDrawTree(tree, ARROWSQUARE);*/
             }
-            if(IsKeyPressed(KEY_M)){
-                rec.isRecording ? StopAudioRecorder(&rec) : StartAudioRecorder(&rec);
+            if(spaceCount == 1){
+                rougeState.color.r = (rougeState.color.r > 0) ?  rougeState.color.r -1 :  255;
+                bleuState.color.b =  (bleuState.color.b > 0) ?  bleuState.color.b -1 :  255;
+                vertState.color.g = (vertState.color.g > 0) ?  vertState.color.g -1 :  255;
+                snprintf(buffer, sizeof(buffer), "Généralement // r = %d, g = %d, b = %d", paraState.color.r, paraState.color.g, paraState.color.b);
+                rmviRewriteFrame(&parametre,buffer);
+                rmviDrawFrame(&parametre);
+                snprintf(buffer, sizeof(buffer), "rouge  = %d", rougeState.color.r);
+                rmviRewriteFrame(&rouge,buffer);
+                rmviDrawFrame(&rouge);
+                snprintf(buffer, sizeof(buffer), "bleu  = %d", bleuState.color.b);
+                rmviRewriteFrame(&bleu,buffer);
+                rmviDrawFrame(&bleu);
+                snprintf(buffer, sizeof(buffer), "vert  = %d", vertState.color.g);
+                rmviRewriteFrame(&vert,buffer);
+                rmviDrawFrame(&vert);
             }
-            if (IsKeyPressed(KEY_A)) {
-                frameInit = countFrame;
-            }
-            if(IsKeyPressed(KEY_E)) {
-               frameInit = -1; 
-            }
-            if (IsKeyPressed(KEY_B)) {
-                frame = rmviGetFrameBGCentered(center.x*2/3, center.y, 12, 6, 10, "square", mathFont);
-                speed = (Vector2){0, 0};
-            }
-            if (IsKeyPressed(KEY_Z)) {
-                count = (Vector4){0, 0, 0, 0};
-            }
-            if(IsKeyPressed(KEY_SPACE)){
-                space_count ++;
-                if(space_count > 3) space_count = 0;
-            }
-            if(space_count == 0){
-                sum = (float)(count.x + count.y + count.z + count.w);
-                rmviUpdateFrame(&frame, frame.outerRect.x + speed.x, frame.outerRect.y + speed.y, frame.outerRect.width, frame.outerRect.height, frame.lineThick, frame.innerColor, frame.outerColor, frame.text, mathFont);
-                rmviUpdateFrame(&root1, root1.outerRect.x , root1.outerRect.y, root1.outerRect.width, root1.outerRect.height, root1.lineThick, root1.innerColor, root1.outerColor, TextFormat( "Haut // %.3f", SAFE_RATIO(count.x, sum)) , mathFont);
-                rmviUpdateFrame(&root2, root2.outerRect.x , root2.outerRect.y, root2.outerRect.width, root2.outerRect.height, root2.lineThick, root2.innerColor, root2.outerColor, TextFormat(" Droite // %.3f", SAFE_RATIO(count.y, sum)) , mathFont);
-                rmviUpdateFrame(&root3, root3.outerRect.x , root3.outerRect.y, root3.outerRect.width, root3.outerRect.height, root3.lineThick, root3.innerColor, root3.outerColor, TextFormat(" Bas // %.3f", SAFE_RATIO(count.z, sum)) , mathFont);
-                rmviUpdateFrame(&root4, root4.outerRect.x , root4.outerRect.y, root4.outerRect.width, root4.outerRect.height, root4.lineThick, root4.innerColor, root4.outerColor, TextFormat(" Gauche // %.3f", SAFE_RATIO(count.w, sum)) , mathFont);
-                //rmviDrawArrowRect2((Vector2){root0.outerRect.x + root0.innerRect.width, root0.outerRect.y + root0.innerRect.height/2}, (Vector2){root1.outerRect.x, root1.outerRect.y + root1.outerRect.height/2}, 10, 1.0f, 0.5f, WHITE);
-                rmviPositioningTree(tree,SPACETREERATIOX, SPACETREERATIOY);
-                rmviDrawFrame(frame, RATIODEFAULT);
-                //rmviDrawTree(tree, 2);
-                rmviDrawTreeSquareWrite(tree, SPLIT_LEFT_ARROWS, textArrowsTree , DRAWCOLOR, RATIOWRITEARROWS, root0.innerRect.height/RATIODEFAULT);
-                rmviMyDrawText(TextFormat("N =  %d", (int)sum), (Vector2) {root0.outerRect.x + root0.innerRect.width*(2+SPACETREERATIOX), root0.outerRect.y + root0.outerRect.height/2-SIZETEXT/2}, SIZETEXT, WHITE);
-                if(frameInit != -1) {
-                    //rmviWriteAnimText(TEST_DOUBLE_BEGIN, (Vector2) {center.x/2, center.y/2}, SIZETEXT, WHITE, frameInit, countFrame);
-                }
-            }
-            if(space_count == 1){
+            if(spaceCount == 2){
                 if(!atom_defined){
                     rmviAtom he_3 = rmviGetAtom(NULL, "He_3", -1.00f, NULL);
-                    rmviFrame h_3_frame = rmviGetRoundFrameBGCentered(center.x*2/3, center.y, 12, 10, "H_3", mathFont);
+                    rmviFrame h_3_frame = rmviGetRoundFrameBGCentered(center.x*2/3, center.y, 12, 10, "H_3", &state);
                     atom = rmviGetAtom(&h_3_frame, "H_3", 12.32f, &he_3);
                     atom_defined = true;
                 }
@@ -118,8 +130,8 @@ int bm_visual_main(void)
                 }
                 rmviDrawAtom(atom);
             }
-            if(space_count == 2){
-                rmviDrawFrame(electron,RATIODEFAULT/2);
+            if(spaceCount == 3){
+                rmviDrawFrame(&electron);
             }
             DrawFPS(10, 10);
         EndTextureMode();
@@ -148,4 +160,10 @@ int main(void){
     bm_visual_main();
     bm_visual_uninitialisation();
     return 0;
+}
+void processInput(){
+    if(IsKeyPressed(KEY_SPACE)){
+        spaceCount ++;
+        if(spaceCount > 4) spaceCount = 0;
+    }
 }

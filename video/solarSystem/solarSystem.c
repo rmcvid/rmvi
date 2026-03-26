@@ -5,11 +5,11 @@
 #define UA2PIXEL 1000.0f // facteur d'échelle pour les distances
 #define UA2PIXEL_FAR 180.0f
 #define TIME_DAY 24*60*60
-#define FRAME2SEC 1000                // conversion frame en seconde
+#define FRAME2SEC 100                // conversion frame en seconde
 #define EARTH_APPARENT_SIZE 30.0f
-
 #define SIZE_TEXT 40.0f
 #define SIZE_SPACING SIZE_TEXT/20.0f
+#define TIME_TO_TRANSITION 10.0f
 // /loadvideo{C:\Users\ryanm\Documents\Rmvi\animation\video\solarSystem\Image\decompte}{decompte}
 
 typedef struct{
@@ -31,17 +31,25 @@ typedef struct{
     char   description[256];
 } PlanetData;
 
+typedef struct Player{
+    Camera3D camera;
+    Vector3 velocity;
+    float speed;
+} Player;
+
 typedef struct{
-    float   frame2Sec;
-    bool    rotation;
-    int     reference;
-    float   ua2Pixel;
-    bool    asteroid;
-    bool    helpActive;
-    int     countRight;
-    bool    draw;
-    bool    ecrit;
-    int     calculByFrame;
+    float   frame2Sec;              // conversion frame en seconde
+    bool    rotation;               // si les planètes tournent sur elles même
+    int     reference;              // la planete sur laquelle est placée l'échelle
+    float   ua2Pixel;               // conversion unité astronomique en pixel
+    bool    asteroid;               // si on affiche lees anneaux de saturne
+    bool    helpActive;             // si on affiche l'aide ou pas
+    int     countRight;             // nombre de fois ou on a appuyé sur la touche pour faire avancer la présentation
+    bool    draw;                   // si on affiche les planètes ou pas    
+    bool    ecrit;                  // si on affiche le texte ou pas
+    int     calculByFrame;          // on fait pow(2, calculByFrame) par frame pour faire avancer la simulation plus vite
+    bool    isTransition;           // si on est en train de faire un changement de référentiel ou pas
+    bool    resetDash;              // reset de dash
 } Representation;
 
 static Quaternion camRot = { 0, 0, 0, 1 }; 
@@ -61,16 +69,21 @@ void addImageToffmpeg(void *ffmpeg);
 rmviPlanet3D getPlanet3D(int num);
 char *LoadTextFile(const char *path);
 PlanetData *LoadPlanetsFromJSON(const char *path, int *outCount);
-void drawPlanet3D(rmviPlanet3D planet,Matrix modelMat,Matrix viewMat,Matrix projMat);
+void drawPlanet3D(rmviPlanet3D planet);
+void updatePlanet3D(rmviPlanet3D planet,Matrix modelMat,Matrix viewMat,Matrix projMat);
 float getModelNormalizationScale(Model model);
-void rmviUpdatePosition3D(rmviDynamic3D *features, float dt, Vector3 centerSpeed);
+void rmviUpdatePosition3D(rmviDynamic3D *features, double dt, Vector3d centerSpeed, Vector3d centerPos);
 void CartesianToSpherical(Vector3 p, float *r, float *theta, float *phi);
-void help(rmviDynamic3D **features, int n);
+void help();
 float apparentRadiusRatio(int i); 
 Vector3 GetModelCenter(Model model);
 void SetShaderLight(Shader shader, lightLoc matLoc, Light light);
 lightLoc rlGetLocationLight(unsigned int shader_id, const char *name);
 static bool useOrtho = false;
+#define MEMORY 500
+//ici
+rmviDash3 dashSun[MEMORY], dashMercury[MEMORY], dashVenus[MEMORY], dashEarth[MEMORY], dashMars[MEMORY], dashJupiter[MEMORY], dashSaturn[MEMORY];
+rmviDash3 *dashList[7] = {dashSun, dashMercury, dashVenus, dashEarth, dashMars, dashJupiter, dashSaturn};
 
 float skyboxVertices[] = {
     // positions          
@@ -103,61 +116,23 @@ float skyboxVertices[] = {
     -1.0f, -0.4,  1.0f
 };
 
-static void CopyFaceRGBA8(unsigned char *dstFace, const unsigned char *srcRGBA, int srcW, int x0, int y0, int size){
-    const int bpp = 4;
-    for (int y = 0; y < size; y++)
-    {
-        const unsigned char *srcRow = srcRGBA + ((y0 + y) * srcW + x0) * bpp;
-        unsigned char *dstRow = dstFace + (y * size) * bpp;
-        memcpy(dstRow, srcRow, (size_t)size * bpp);
-    }
-}
+Camera3D camera = {
+    .position = {0.0f, 0.0f,  +100.0f},
+    .target = {0.0f, 0.0f, -1.0f},
+    .up = {0.0f, 1.0f,  0.0f},
+    .fovy = 45,
+    .projection = CAMERA_PERSPECTIVE
+};
 
-unsigned int LoadCubemapFromCross4x3(const char *crossPath){
-    Image cross = LoadImage(crossPath);
-    if (!cross.data) return 0;
-    ImageFormat(&cross, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
-    if ((cross.width % 4) != 0 || (cross.height % 3) != 0){
-        TraceLog(LOG_ERROR, "Cross image must be 4N x 3N. Got %dx%d", cross.width, cross.height);
-        UnloadImage(cross);
-        return 0;
-    }
-    int size = cross.width / 4;
-    if (cross.height / 3 != size){
-        TraceLog(LOG_ERROR, "Cross faces must be square");
-        UnloadImage(cross);
-        return 0;
-    }
-    const int bpp = 4;
-    size_t faceBytes = (size_t)size * (size_t)size * bpp;
-    unsigned char *data = (unsigned char *)malloc(faceBytes * 6);
-    if (!data) { UnloadImage(cross); return 0; }
-    const unsigned char *src = (const unsigned char *)cross.data;
-    // +X, -X, +Y, -Y, +Z, -Z
-    CopyFaceRGBA8(data + faceBytes * 0, src, cross.width, 2*size, 1*size, size); // +X
-    CopyFaceRGBA8(data + faceBytes * 1, src, cross.width, 0*size, 1*size, size); // -X
-    CopyFaceRGBA8(data + faceBytes * 2, src, cross.width, 1*size, 0*size, size); // +Y
-    CopyFaceRGBA8(data + faceBytes * 3, src, cross.width, 1*size, 2*size, size); // -Y
-    CopyFaceRGBA8(data + faceBytes * 4, src, cross.width, 1*size, 1*size, size); // +Z
-    CopyFaceRGBA8(data + faceBytes * 5, src, cross.width, 3*size, 1*size, size); // -Z
-    unsigned int id = rlLoadTextureCubemap(data, size, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8, 1);
-    free(data);
-    UnloadImage(cross);
-    return id;
-}
-
-Vector3 cameraPos   = {0.0f, 0.0f,  +100.0f};
-Vector3 cameraFront = {0.0f, 0.0f, -1.0f};
-Vector3 cameraUp    = {0.0f, 1.0f,  0.0f};
-float cameraSpeed;
-float lastX, lastY;
-float fov = 45;                 // zoom
+Player player;
+float lastX, lastY;                // zoom
 float shininess = 64;
 bool firstMouse = true;
 rmviPlanet3D* planets;
 rmviDynamic3D **features;
-
+State helpState;
 int space_count = 0;
+float deltatime = 0;
 Representation actualRep;
 Representation repEarth = {
     .frame2Sec = FRAME2SEC,
@@ -210,14 +185,16 @@ int bm_visual_main(void){
     Token tokens[256];
     RenderBox boxes[256];
     AnimText *animText = initAnimText();
+    State state = rmviGetStateClassic();
     int boxCount;
-    float deltatime = 0;
     float curentFrame,oldFrame = 0;
     int countFrame = 0;
     int planetCount = 0;
     planetsData = LoadPlanetsFromJSON(HERE_PATH "planets.json", &planetCount);
+    planetCount = 7; 
     planets = malloc(sizeof(rmviPlanet3D)*planetCount);
     features = malloc(sizeof(rmviDynamic3D*) * planetCount);
+    //ici
     for (int i = 0; i < planetCount; i++){
         planets[i] = getPlanet3D(i);
         features[i] = &planets[i].features;
@@ -225,19 +202,26 @@ int bm_visual_main(void){
     Texture2D nightTex = LoadTexture(IMAGE_PATH"earth/Textures/Night_lights_2K.png");
     int nightLoc = GetShaderLocation(planets[3].shader, "nightMap");
     SetShaderValueTexture(planets[3].shader,nightLoc,nightTex);
-    float playerSpeed = 500;
     float aspect = (float)GetScreenWidth() / (float)GetScreenHeight();
     float sizeOrtho = 10.0f;
     actualRep = repEarth;
     int rotationFrame = 0;
-    float *listWidth;
+    rmviFloatList listWidth;
     int lineCount;
     float heighTotal;
+    float transitionFactor = 0.0f;
     Vector3 sunDir;
+    Vector3d  centerSpeed = (Vector3d) {0};
+    Vector3d centerPos = (Vector3d) {0};
     rmviCarthesian carthesian = rmviGetCarthesian((Vector2) {CENTER.x/2, CENTER.y},(Vector2){490, 420},(Vector2){70, 70});
     Lecture lecture = rmviGetLecture(HERE_PATH "presentation.txt");
     //mp4ToTexture(IMAGE_PATH "decompte/decompte.mp4", IMAGE_PATH "decompte", "decompte");
     //Video decompte = LoadVideo(IMAGE_PATH "decompte/decompte.mp4", IMAGE_PATH "decompte", "decompte", 0);
+    player = (Player){
+        .camera = camera,
+        .velocity = {0,0,0},
+        .speed = 500.0f
+    };
 
     // asteroid
     Shader asteroidShader = LoadShader(SHADER_PATH "asteroid.vs", SHADER_PATH "asteroid.fs");
@@ -252,7 +236,10 @@ int bm_visual_main(void){
     float radius = apparentRadiusRatio(6)*EARTH_APPARENT_SIZE;
     float offset = 50.0f;
     Matrix astModelMat;
-    
+    Color colorListPlanet[10];
+    for (int i = 0; i < planetCount; i++){ 
+        colorListPlanet[i] = GetAverageColor(planets[i].model.materials[0].maps[0].texture);
+    }
     for (unsigned int i = 0; i < amount; i++){
         Matrix model = MatrixIdentity();
         // angle initial réparti uniformément
@@ -311,16 +298,31 @@ int bm_visual_main(void){
     unsigned int cameraFrontLoc = rlGetLocationUniform(skyshader.id,"cameraFront");
     rlEnableShader(skyshader.id);
     //rlSetUniformSampler(skyboxLoc, 0); // texture unit 0
+    helpState = rmviGetStateClassic();
+    helpState.widthMax = 0.4*GetScreenWidth();
     rlDisableShader();
     rlDisableBackfaceCulling();
     DisableCursor();
+
+    Model sunModel = LoadModelFromMesh(GenMeshSphere(1.0f, 36, 36));
+    //Model coronaModel = LoadModelFromMesh(GenMeshSphere(120.0f, 36, 36));
+    // on peut utiliser notre shader ou pas, il faudrait faire un test pour permettre
+    Shader myShader = LoadShader(HERE_PATH"shader/sun2.vs", HERE_PATH"shader/sun2.fs"); 
+    unsigned int locCam  = GetShaderLocation(myShader, "uCamPos");
+    unsigned int centerSunLoc = GetShaderLocation(myShader, "centerSun");
+    Vector3 sunPos = {0};
+    Texture2D noiseTex = LoadTexture(IMAGE_PATH "sun/textures/sun2.jpg");
+    sunModel.materials[0].maps[MATERIAL_MAP_ALBEDO].texture = noiseTex;
+    sunModel.materials[0].shader = myShader;
+    planets[0].model = sunModel;
+    planets[0].shader = myShader;
+
     float startTime = GetTime();
     while (!WindowShouldClose()){
         UpdateCursorToggle();
         curentFrame = GetTime();
         deltatime = curentFrame - oldFrame;
         oldFrame = curentFrame;
-        cameraSpeed = playerSpeed*deltatime;
         BeginTextureMode(screen);
             ClearBackground(BG);
             rlClearScreenBuffers();  // clear color + depth (et stencil si présent)
@@ -331,48 +333,72 @@ int bm_visual_main(void){
             updateMouse();
             //PlayVideo(&decompte);
             updateZoom(GetMouseWheelMoveV());
-            viewMat = MatrixLookAt(
-                cameraPos, 
-                Vector3Add(cameraPos,cameraFront), 
-                cameraUp);
-            
-            useOrtho ? 
-                (projMat = MatrixOrtho( -sizeOrtho * aspect,sizeOrtho * aspect,-sizeOrtho, sizeOrtho, 0.1f, 3000.0f)):
-                (projMat = MatrixPerspective(DEG2RAD * fov,aspect,0.1f,30000.0f));
             // updatepos
             if (actualRep.rotation) rotationFrame++;
-            for(int i = 0; i< pow(2,actualRep.calculByFrame); i++){
-                rmviGravityRepulsion3D(features,planetCount);
-                for(int i = 0; i< planetCount; i++){
-                    // update model
-                    rmviUpdatePosition3D(features[i],actualRep.frame2Sec,Vector3Zero());
+            if (actualRep.isTransition){
+                transitionFactor += 1/(TIME_TO_TRANSITION*FPS);
+                if(transitionFactor >=1){
+                    actualRep.isTransition = false;
+                    transitionFactor = 1;
+                    //centerPos = features[3]->position;
+                } 
+            }
+            if(actualRep.resetDash){
+                actualRep.resetDash = false;
+                for (int i = 0; i < 7; i++) {
+                    memset(dashList[i], 0, sizeof(rmviDash3) * MEMORY);
                 }
             }
-            light.position = Vector3Scale(features[0]->position, 1.0f /UA * actualRep.ua2Pixel);
+            for(int j = 0; j< pow(2,actualRep.calculByFrame); j++){
+                rmviGravityRepulsion3D(features,planetCount);
+                centerSpeed = Vector3dScale(features[3]->velocity,transitionFactor);
+                centerPos = Vector3dScale(features[3]->position,transitionFactor);
+                for(int i = 0; i< planetCount; i++){
+                    rmviUpdatePosition3D(features[i],actualRep.frame2Sec,centerSpeed, (Vector3d) {0});
+                    rmviAddDash3(dashList[i], MEMORY, countFrame, 2, features[i], camera.position,Vector3d2Vector3(centerSpeed));
+                }
+            }
+            for(int i = 0; i< planetCount; i++){
+                features[i]->position = Vector3dSubtract(features[i]->position, Vector3dScale(centerPos,transitionFactor));
+            }
+            viewMat = MatrixLookAt(camera.position, 
+                Vector3Add(camera.position,camera.target), 
+                camera.up);
+            useOrtho ? 
+                (projMat = MatrixOrtho( -sizeOrtho * aspect,sizeOrtho * aspect,-sizeOrtho, sizeOrtho, 0.1f, 3000.0f)):
+                (projMat = MatrixPerspective(DEG2RAD * camera.fovy,aspect,0.1f,30000.0f));
+            rlSetMatrixProjection(projMat);
+            rlSetMatrixModelview(viewMat);
+            light.position = Vector3Scale(Vector3d2Vector3(features[0]->position), 1.0 /UA * actualRep.ua2Pixel);
             for(int i = 0; i< planetCount; i++){
                 if(actualRep.draw){
                     modelMat = getModelMatPlanet(i, planets[i], rotationFrame, actualRep, planetsData[i]);
-                SetShaderValue(planets[i].shader, planets[i].locUniform.lightLoc.position, &light.position,RL_SHADER_UNIFORM_VEC3);
-                SetShaderValue(planets[i].shader, planets[i].locUniform.lightLoc.ambient, &light.ambient,RL_SHADER_UNIFORM_VEC3);
-                SetShaderValue(planets[i].shader, planets[i].locUniform.viewPosLoc, &cameraPos, RL_SHADER_UNIFORM_VEC3);
-                if (planets[i].locUniform.timeLoc != -1){
-                    float time = (float)GetTime();
-                    SetShaderValue(planets[i].shader, planets[i].locUniform.timeLoc, &time, RL_SHADER_UNIFORM_FLOAT);
-                }
-                SetShaderValueMatrix(planets[i].shader,planets[i].locUniform.modelLoc,modelMat);
-                SetShaderValueMatrix(planets[i].shader,planets[i].locUniform.viewLoc,viewMat);
-                SetShaderValueMatrix(planets[i].shader,planets[i].locUniform.projLoc,projMat);
-                rlEnableShader(planets[i].shader.id);
-                rlActiveTextureSlot(0);
-                rlEnableTexture(planets[i].model.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture.id);
-                rlActiveTextureSlot(1);
-                rlEnableTexture(nightTex.id);
-                drawPlanet3D(planets[i],modelMat,viewMat,projMat);
-                if(i==6) astModelMat = modelMat;
-                rlDisableShader();
+                    SetShaderValue(planets[i].shader, planets[i].locUniform.lightLoc.position, &light.position,RL_SHADER_UNIFORM_VEC3);
+                    SetShaderValue(planets[i].shader, planets[i].locUniform.lightLoc.ambient, &light.ambient,RL_SHADER_UNIFORM_VEC3);
+                    SetShaderValue(planets[i].shader, planets[i].locUniform.viewPosLoc, &camera.position, RL_SHADER_UNIFORM_VEC3);
+                    if (planets[i].locUniform.timeLoc != -1){
+                        float time = (float)GetTime();
+                        SetShaderValue(planets[i].shader, planets[i].locUniform.timeLoc, &time, RL_SHADER_UNIFORM_FLOAT);
+                        //SetShaderValue(planets[i].shader, locCam, &camera.position, SHADER_UNIFORM_VEC3);
+                        if(i == 0){
+                            sunPos = Vector3Scale(Vector3d2Vector3(features[i]->position), UA2PIXEL/UA) ; 
+                            SetShaderValue(planets[i].shader, centerSunLoc, &sunPos, SHADER_UNIFORM_VEC3);
+                            SetShaderValue(myShader, locCam, &camera.position, SHADER_UNIFORM_VEC3);
+                        }
+                    }
+                    updatePlanet3D(planets[i],modelMat,viewMat,projMat);
+                    if( i == 3) {
+                        rlActiveTextureSlot(1);
+                        rlEnableTexture(nightTex.id);
+                    }
+
+                    drawPlanet3D(planets[i]);
+                    if(i==6) astModelMat = modelMat;
+                    rlDisableShader();
+                    // modelview
+                    rmviDrawDash3Fast(dashList[i], MEMORY , 10.0f,  1.0f /UA * actualRep.ua2Pixel,colorListPlanet[i]);
                 }
             }
-            
             // draw asteroid field
             if (actualRep.asteroid && actualRep.draw){
                 SetShaderValueMatrix(asteroidShader, astParentLoc, astModelMat);
@@ -391,38 +417,40 @@ int bm_visual_main(void){
                 }
             }
             rlDisableShader();
-            DrawFPS(10, 10);
             lecture.currentParagraph = actualRep.countRight;
-            if (actualRep.helpActive) help(features,3);
-            if(actualRep.ecrit){
-                if(readScenario(&lecture)){
-                    animText->animTime = 0;
-                    int tokenCount = rmviTokenizeLatex(lecture.content,tokens, 256);
-                    boxCount = rmviBuildRenderBoxes(tokens,tokenCount,boxes,mathFont,SIZE_TEXT, SIZE_SPACING);
-                    if( lecture.content != NULL) paragraphPos = (Vector2) { CENTER.x, CENTER.y}; 
-                }
-                Vector2 drawPos = paragraphPos;
-                lineCount =rmviCalcWidthLine(boxes, boxCount,&listWidth);
-                heighTotal = rmviCalcHeightTotal(boxes, boxCount);
-                //rmviDrawRenderBoxesCentered(listWidth, heighTotal,boxes, boxCount,drawPos,mathFont,SIZE_TEXT, SIZE_SPACING,WHITE);
-                rmviDrawRenderBoxesCenteredAnimed(boxes, boxCount,drawPos,mathFont,SIZE_TEXT, SIZE_SPACING,WHITE,animText);
-                rmviAudioRenderBoxesAnimed(animText);
-                //rmviDrawCarthesianFull(carthesian, 10, 3, WHITE,true,false);
-                //rmviWriteLatex(paragraph, &drawPos, SIZE_TEXT, SIZE_SPACING, WHITE, mathFont);    
-            }
             //skybox
-            sunDir = Vector3Normalize(Vector3Subtract(light.position, cameraPos));
+            sunDir = Vector3Normalize(Vector3Subtract(light.position, camera.position));
             rlEnableVertexArray(skyVao);
             rlEnableShader(skyshader.id);
             rlSetUniformMatrices(skyViewLoc, &viewMat,1);
             rlSetUniformMatrices(skyProjLoc, &projMat,1);
             rlSetUniform(sunDirLoc, &sunDir, RL_SHADER_UNIFORM_VEC3, 1);
-            rlSetUniform(cameraFrontLoc, &cameraFront, RL_SHADER_UNIFORM_VEC3, 1);
+            rlSetUniform(cameraFrontLoc, &camera.target, RL_SHADER_UNIFORM_VEC3, 1);
             //rlActiveTextureSlot(0);
             //rlEnableTextureCubemap(cubemapId);
             rlDrawVertexArray(0,36);
             rlEnableDepthMask();
-
+        EndTextureMode();
+        // ecrans 2d
+        BeginTextureMode(screen);
+            DrawFPS(10, 10);
+            if (actualRep.helpActive) help();
+            if(actualRep.ecrit){
+                if(readScenario(&lecture)){
+                    animText->animTime = 0;
+                    int tokenCount = rmviTokenizeLatex(lecture.content,tokens, 256);
+                    boxCount = rmviBuildRenderBoxes(tokens,tokenCount,boxes,&state);
+                    if( lecture.content != NULL) paragraphPos = (Vector2) { CENTER.x, CENTER.y}; 
+                }
+                Vector2 drawPos = paragraphPos;
+                rmviCalcWidthLine(boxes, boxCount,&listWidth);
+                heighTotal = rmviCalcHeightTotal(boxes, boxCount);
+                //rmviDrawRenderBoxesCentered(listWidth, heighTotal,boxes, boxCount,drawPos,mathFont,SIZE_TEXT, SIZE_SPACING,WHITE);
+                rmviDrawRenderBoxesCenteredAnimed(boxes, boxCount,drawPos,animText);
+                rmviAudioRenderBoxesAnimed(animText);
+                //rmviDrawCarthesianFull(carthesian, 10, 3, WHITE,true,false);
+                //rmviWriteLatex(paragraph, &drawPos, SIZE_TEXT, SIZE_SPACING, WHITE, mathFont);    
+            }
         EndTextureMode();
         rmviDraw();
         if (RECORDING) addImageToffmpeg(ffmpeg);
@@ -561,33 +589,34 @@ float apparentRadiusRatio(int num){ //
         log(planetsData[num].radius_e/planetsData[actualRep.reference].radius_e);   
 }
  
-Vector3 getPositionFromJson(int num){
-    return (Vector3) {
-        planetsData[num].aphelion*cosf(planetsData[num].theta*DEG2RAD)*cosf(planetsData[num].phi*DEG2RAD),
-        planetsData[num].aphelion*sinf(planetsData[num].theta*DEG2RAD)*sinf(planetsData[num].phi*DEG2RAD),
-        planetsData[num].aphelion*sinf(planetsData[num].theta*DEG2RAD)*cosf(planetsData[num].phi*DEG2RAD)
+Vector3d getPositionFromJson(int num){
+    return (Vector3d) {
+        (double) planetsData[num].aphelion*cosf(planetsData[num].theta*DEG2RAD)*cosf(planetsData[num].phi*DEG2RAD),
+        (double) planetsData[num].aphelion*sinf(planetsData[num].theta*DEG2RAD)*sinf(planetsData[num].phi*DEG2RAD),
+        (double) planetsData[num].aphelion*sinf(planetsData[num].theta*DEG2RAD)*cosf(planetsData[num].phi*DEG2RAD)
     };
 }
 
-Vector3 getVelocityFromJson(int num, Vector3 position){
-    Vector3 up = { 0, 1, 0 };
-    Vector3 normal = Vector3RotateByAxisAngle(
+Vector3d getVelocityFromJson(int num, Vector3d position){
+    Vector3d up = { 0, 1, 0 };
+    Vector3d normal = Vector3dRotateByAxisAngle(
         up,
-        Vector3Normalize(position),
+        Vector3dNormalize(position),
         planetsData[num].phi * DEG2RAD
     );
-    Vector3 tangent = Vector3CrossProduct(normal, position);
-    return Vector3Normalize(tangent);
+    Vector3d tangent = Vector3dCrossProduct(normal, position);
+    return Vector3dNormalize(tangent);
 }
 
+
 rmviDynamic3D getDynamicPlanet3D(int num){
-    Vector3 position = getPositionFromJson(num);
-    Vector3 velocityDir = getVelocityFromJson(num, position); // DOIT être normalisée
+    Vector3d position = getPositionFromJson(num);
+    Vector3d velocityDir = getVelocityFromJson(num, position); // DOIT être normalisée
     rmviDynamic3D feature = {
         .position = position,
         .mass     = planetsData[num].mass,
-        .velocity = Vector3Scale(velocityDir, planetsData[num].velocity_min),
-        .force    = Vector3Zero(),
+        .velocity = Vector3dScale(velocityDir, planetsData[num].velocity_min),
+        .force    = (Vector3d){0},
         .radius   = planetsData[num].radius_e
     };
     return feature;
@@ -598,14 +627,22 @@ rmviPlanet3D getPlanet3D(int num){
     return planet;
 }
 
-void rmviUpdatePosition3D(rmviDynamic3D *features, float dt, Vector3 centerSpeed){
+void rmviUpdatePosition3D(rmviDynamic3D *features, double dt, Vector3d centerSpeed, Vector3d centerPos){
     // Met à jour la position et la vitesse en fonction de la force
-    Vector3 acceleration = Vector3Scale(features->force, 1.0f / ((float)features->mass));
-    features->position = Vector3Add(Vector3Add(features->position, Vector3Scale(features->velocity, dt)), Vector3Scale(acceleration, dt*dt/2.0f));
-    features->velocity = Vector3Add(Vector3Add(features->velocity, Vector3Scale(acceleration, dt)), Vector3Scale(centerSpeed, -1.0f));
+    Vector3d acceleration = Vector3dScale(features->force, 1.0 / (features->mass));
+    features->position = Vector3dAdd(Vector3dAdd(Vector3dAdd(features->position, Vector3dScale(features->velocity, dt)),Vector3dAdd(Vector3dScale(acceleration, dt*dt/2.0f),Vector3dScale(centerSpeed, -dt))), Vector3dScale(centerPos, -1.0f));
+    features->velocity = Vector3dAdd(features->velocity, Vector3dScale(acceleration, dt));
     
 }
-void drawPlanet3D(rmviPlanet3D planet,Matrix modelMat,Matrix viewMat,Matrix projMat){
+void updatePlanet3D(rmviPlanet3D planet,Matrix modelMat,Matrix viewMat,Matrix projMat){
+    SetShaderValueMatrix(planet.shader,planet.locUniform.modelLoc,modelMat);
+    SetShaderValueMatrix(planet.shader,planet.locUniform.viewLoc,viewMat);
+    SetShaderValueMatrix(planet.shader,planet.locUniform.projLoc,projMat);
+    rlEnableShader(planet.shader.id);
+    rlActiveTextureSlot(0);
+    rlEnableTexture(planet.model.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture.id);
+}
+void drawPlanet3D(rmviPlanet3D planet){
     for (int m = 0; m < planet.model.meshCount; m++){
         rlEnableVertexArray(planet.model.meshes[m].vaoId);
         (planet.model.meshes->indices != NULL) ? rlDrawVertexArrayElements(0, planet.model.meshes->triangleCount * 3, NULL) : rlDrawVertexArray(0, planet.model.meshes->vertexCount);
@@ -624,34 +661,16 @@ void CartesianToSpherical(Vector3 p, float *r, float *theta, float *phi){
     }
 }
 // à modifier
-void help(rmviDynamic3D **features, int n){
-    float r, theta, phi;
-    CartesianToSpherical(features[n]->position, &r, &theta, &phi);
+void help(){
+    //float r, theta, phi;
+    //CartesianToSpherical(features[n]->position, &r, &theta, &phi);
     char text[256];
-    char text2[256];
-    snprintf(
-        text,
-        sizeof(text),
-        //" j'écris en 0 /begin(itemize) /item Planet: %s /item Distance: %.2f UA /item /theta : %.2f /item /phi : %.2f /end(itemize) // ",
-        "j'écris en centrée // et pour la suite ?",
-        planetsData[n].name,
-        r,
-        theta * RAD2DEG,
-        phi   * RAD2DEG
-    );
-    snprintf(
-        text2,
-        sizeof(text2),
-        //" j'écris en 0 /begin(itemize) /item Planet: %s /item Distance: %.2f UA /item /theta : %.2f /item /phi : %.2f /end(itemize)",
-        "position suivante ?",
-        planetsData[n].name,
-        r,
-        theta * RAD2DEG,
-        phi   * RAD2DEG
-    );
-    Vector2 textPos = {CENTER.x , CENTER.y};
-    rmviWriteLatexLeftCenteredClassic(text, &textPos);
-    rmviWriteLatexLeftCenteredClassic(text2, &textPos);
+    float value = FRAME2SEC*pow(2.0f, actualRep.calculByFrame)*GetFPS();
+    if (value > 2*TIME_DAY)snprintf(text, sizeof(text), "1s = %.0f jour%s" ,(value/(TIME_DAY)),(value/(TIME_DAY) > 1.0f) ? "s" : "");
+    else if (value > 10*60*60)snprintf(text, sizeof(text), "1s = %.0f heure%s", value/3600,(value/3600 > 1.0f) ? "s" : "");
+    else snprintf(text, sizeof(text),"1s = %.0f seconde%s",value,(value > 1.0f) ? "s" : "");
+    Vector2 helpPos = (Vector2){GetScreenWidth()*0.8, GetScreenHeight()*0.2};
+    rmviWriteLatex(text,&helpPos , &helpState);
 }
 
 
@@ -713,13 +732,19 @@ PlanetData *LoadPlanetsFromJSON(const char *path, int *outCount){
 }
 
 void updateMouse(){
+    // En gros on un quaternion, camRot, qui représente toutes les modifications d'orientation éffectué
+    // à chaque rotation additionnel, camRot est est modifié pour ajouter cette rotation.
+    // L'oriantation de la camera à tout moment est l'orientation initiale multiplié par cam rot
+    //
     Vector2 delta = GetMouseDelta();
-    float sensitivity = 0.0025f;         // ajuste (≈ 0.1°/pixel -> ~0.0017 rad)
+    float sensitivity = 0.0025f;
     float yawDelta   =  -delta.x * sensitivity;
     float pitchDelta =  -delta.y * sensitivity;
-
+    // il faut ajouter un qroll
+    // ici on pourrait définir directement l'axe perpendiculaire et définir seulement un q non
     Vector3 worldUp = Vector3RotateByQuaternion((Vector3){ 0, 1, 0 }, camRot);
     Vector3 right = Vector3RotateByQuaternion((Vector3){ 1, 0, 0 }, camRot);
+    
     Quaternion qYaw   = QuaternionFromAxisAngle(worldUp, yawDelta);
     Quaternion qPitch = QuaternionFromAxisAngle(right,  pitchDelta);
     camRot = QuaternionMultiply(qYaw, camRot);
@@ -727,59 +752,37 @@ void updateMouse(){
     camRot = QuaternionNormalize(camRot);
 
     // Déduire les axes caméra depuis l'orientation
-    Vector3 front = Vector3RotateByQuaternion((Vector3){ 0, 0, -1 }, camRot);
-    Vector3 up    = Vector3RotateByQuaternion((Vector3){ 0, 1,  0 }, camRot);
-
-    front = Vector3Normalize(front);
-    up    = Vector3Normalize(up);
-
-    // Met à jour ta logique existante
-    cameraFront = front;          // si tu utilises cette variable ailleurs
-    cameraUp = up;
+    Vector3 front = Vector3Normalize(Vector3RotateByQuaternion((Vector3){ 0, 0, -1 }, camRot));
+    Vector3 up    = Vector3Normalize(Vector3RotateByQuaternion((Vector3){ 0, 1,  0 }, camRot));
+    camera.target = front;
+    camera.up = up;
 }
-/*
-void updateMouse(){
-    Vector2 delta = GetMouseDelta(); // dx et dy depuis la dernière frame
-    // ici fct à modifier, peut être passer au quaternion
-    float sensitivity = 0.1f;
-    yaw   += delta.x * sensitivity;
-    pitch -= delta.y * sensitivity;
-    //if(pitch > 89.0f) pitch = 89.0f;
-    //if(pitch < -89.0f) pitch = -89.0f;
-    Vector3 direction = {
-        cosf(DEG2RAD*yaw) * cosf(DEG2RAD*pitch),
-        sinf(DEG2RAD*pitch),
-        sinf(DEG2RAD*yaw) * cosf(DEG2RAD*pitch)
-    };
-    cameraFront = Vector3Normalize(direction);
-}
-*/
 
-void updateZoom(Vector2 wheel)
-{
-    fov -= (float)wheel.y;
-    if (fov < 1.0f)
-        fov = 1.0f;
-    if (fov > 45.0f)
-        fov = 45.0f; 
+void updateZoom(Vector2 wheel){
+    camera.fovy -= (float)wheel.y;
+    if (camera.fovy < 1.0f)
+        camera.fovy = 1.0f;
+    if (camera.fovy > 45.0f)
+        camera.fovy = 45.0f; 
 }
+
 void processInput(){
-    if (IsKeyDown(KEY_SPACE)) cameraPos = Vector3Add(cameraPos , Vector3Scale(cameraFront,cameraSpeed));
-    if (IsKeyDown(KEY_S)) cameraPos = Vector3Subtract(cameraPos , Vector3Scale(cameraFront,cameraSpeed));
-    if (IsKeyDown(KEY_A)) cameraPos = Vector3Subtract(cameraPos , 
-        Vector3Scale(Vector3Normalize (Vector3CrossProduct(cameraFront,cameraUp)),cameraSpeed));
-    if (IsKeyDown(KEY_D)) cameraPos = Vector3Add(cameraPos , 
-        Vector3Scale(Vector3Normalize (Vector3CrossProduct(cameraFront,cameraUp)),cameraSpeed));
+    if (IsKeyDown(KEY_SPACE)) camera.position = Vector3Add(camera.position , Vector3Scale(camera.target,player.speed*deltatime));
+    if (IsKeyDown(KEY_S)) camera.position = Vector3Subtract(camera.position , Vector3Scale(camera.target,player.speed*deltatime));
+    if (IsKeyDown(KEY_A)) camera.position = Vector3Subtract(camera.position , 
+        Vector3Scale(Vector3Normalize (Vector3CrossProduct(camera.target,camera.up)),player.speed*deltatime));
+    if (IsKeyDown(KEY_D)) camera.position = Vector3Add(camera.position , 
+        Vector3Scale(Vector3Normalize (Vector3CrossProduct(camera.target,camera.up)),player.speed*deltatime));
     if (IsKeyPressed(KEY_P)) useOrtho = !useOrtho;
     if(IsKeyPressed(KEY_M)) rec.isRecording ? StopAudioRecorder(&rec) : StartAudioRecorder(&rec);
     if(IsKeyPressed(KEY_R)) actualRep.rotation = !actualRep.rotation;
-    if (IsKeyPressed(KEY_ZERO))  cameraPos = Vector3Scale(planets[0].features.position,  1.0f /UA * actualRep.ua2Pixel);
-    if (IsKeyPressed(KEY_ONE))   cameraPos = Vector3Scale(planets[1].features.position,  1.0f /UA * actualRep.ua2Pixel);
-    if (IsKeyPressed(KEY_TWO))   cameraPos = Vector3Scale(planets[2].features.position,  1.0f /UA * actualRep.ua2Pixel);
-    if (IsKeyPressed(KEY_THREE)) cameraPos = Vector3Scale(planets[3].features.position,  1.0f /UA * actualRep.ua2Pixel);
-    if (IsKeyPressed(KEY_FOUR))  cameraPos = Vector3Scale(planets[4].features.position,  1.0f /UA * actualRep.ua2Pixel);
-    if (IsKeyPressed(KEY_FIVE))  cameraPos = Vector3Scale(planets[5].features.position,  1.0f /UA * actualRep.ua2Pixel);
-    if (IsKeyPressed(KEY_SIX))   cameraPos = Vector3Scale(planets[6].features.position,  1.0f /UA * actualRep.ua2Pixel);
+    if (IsKeyPressed(KEY_ZERO))  camera.position = Vector3Scale( Vector3d2Vector3(planets[0].features.position),  1.0f /UA * actualRep.ua2Pixel);
+    if (IsKeyPressed(KEY_ONE))   camera.position = Vector3Scale( Vector3d2Vector3(planets[1].features.position),  1.0f /UA * actualRep.ua2Pixel);
+    if (IsKeyPressed(KEY_TWO))   camera.position = Vector3Scale( Vector3d2Vector3(planets[2].features.position),  1.0f /UA * actualRep.ua2Pixel);
+    if (IsKeyPressed(KEY_THREE)) camera.position = Vector3Scale( Vector3d2Vector3(planets[3].features.position),  1.0f /UA * actualRep.ua2Pixel);
+    if (IsKeyPressed(KEY_FOUR))  camera.position = Vector3Scale( Vector3d2Vector3(planets[4].features.position),  1.0f /UA * actualRep.ua2Pixel);
+    if (IsKeyPressed(KEY_FIVE))  camera.position = Vector3Scale( Vector3d2Vector3(planets[5].features.position),  1.0f /UA * actualRep.ua2Pixel);
+    if (IsKeyPressed(KEY_SIX))   camera.position = Vector3Scale( Vector3d2Vector3(planets[6].features.position),  1.0f /UA * actualRep.ua2Pixel);
     if (IsKeyPressed(KEY_L)){
         strongAmbient = !strongAmbient;
         if (strongAmbient){
@@ -796,8 +799,11 @@ void processInput(){
     if (IsKeyPressed(KEY_LEFT) && actualRep.countRight > 0) actualRep.countRight--;
     if (IsKeyPressed(KEY_J)) actualRep.reference = 5;
     if (IsKeyPressed(KEY_T)) actualRep.reference = 3;
+    if (IsKeyPressed(KEY_Y)) actualRep.isTransition = !actualRep.isTransition ;
+    if (IsKeyPressed(KEY_X)) actualRep.isTransition = true ;
     if (IsKeyPressed(KEY_DOWN)) actualRep.calculByFrame --;
     if (IsKeyPressed(KEY_UP)) actualRep.calculByFrame ++;
+    if (IsKeyPressed(KEY_B)) actualRep.resetDash = true;
     
 }
 

@@ -10,6 +10,8 @@ Il faut dans le dossier vidéo utiliser le dossier de la vidéo qu'on veut produ
 Certaines modification ont été apportée dans raudio.c et raylib.h. Les modifications apportées sont aux niveaux du recorder afin de pouvoir enregistrée du son en même temps que l'enregistrement de la vidéo.
   
 ## TODOs 
+pouvoir lancer ou non l'enregistrement directement en lancant le main plutot que par config.h
+
 ### Text2Latex
   - Implementer une fonction /centering directement dans le fichier txt afin de pouvoir centrer un paragraphe ou certaine phrases. Implementer drawrenderboxescentered comme principal et l'autre comme cas particulier. Potentiellement ajouté une structure qui définit l'état.
   - Deux bugs sont à corriger.
@@ -23,11 +25,10 @@ Certaines modification ont été apportée dans raudio.c et raylib.h. Les modifi
 Etablir un txt qui transformera le tout en vidéo celui ci devrait faire lien entre numero de frame et temps irl. Ensuite le fichier text doit pouvoir etre lu par une fonction qui transforme le fichier txt en vidéo mp4.
 
 ### Solar System
-  - Il faut ajouter le fond stéllaire.
   - Definir les mouvement de la camera pour bien afficheret  visionner les mouvement des planètes. Pseudo 2D ==> épicicloides
-  - Permettre d'accellerer le temps sans diminiuer la qualité de calcul ==> faire les calculs par step et afficher tous les x steps
   - Ajouter une ligne qui trace l'orbite.
-  - Pouvoir modifier l'écoulement du temps sans pour autant modifier 
+  - Definir une inertie pour la camera
+  - Modifier le shader du soleil, faire un shader volume
 
 
 ### Faire la vidéo sur la décomposition de fourier ( short?).

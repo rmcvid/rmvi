@@ -6,17 +6,17 @@ Font mathFont;
 
 #define MAX_CODEPOINTS 512
 #define INTERLIGNE_ITEM 0.5f    // interligne pour les items
-#define INTERLIGNE 0.3f         // Line spacing ratio to multiply to the fontSize
-#define RATIO_INDEX 0.6f        // Size ratio for index text such H_3
+#define INTERLIGNE 0.3f         // Line spacing ratio to multiply to the sizeText
+#define RATIO_INDEX 0.8f        // Size ratio for index text such H_3
 #define RATIO_INDEX_DOWN 0.6f   // Ratio for subscript positioning
-#define RATIO_INDEX_UP 0.15f    // Ratio for superscript positioning
+#define RATIO_INDEX_UP 0.3f    // Ratio for superscript positioning
 #define RATIO_SIZE_FRAC 0.8f
 #define RATIO_INDENT 2.0f      // Ratio for item indentation
 #define RATIO_SPACE 0.33f
 #define RATIO_LEN_TEXT 0.8f * GetScreenWidth()
 #define RATIO_INDENT_BEGIN 2    // ratio for the indent time the font size
 #define SIZE_TEXT 40.0f
-#define SIZE_SPACING 8.0f
+#define SIZE_SPACING 2.0f
 #define BIG 1.4f
 #define RATIO_LINE 1/20.0f
 #define MATH_INTERLINE_RATIO INTERLIGNE_ITEM
@@ -36,17 +36,19 @@ Font mathFont;
     } while (0)
 
 #define RMVI_MEASURE_WIDTH_SYMBOLE(cmd, glyph) else if (strncmp(&latex[i + 1], (cmd), sizeof(cmd) - 1) == 0) {  \
-    Vector2 ts = MeasureTextEx(font, (glyph), sizeText, spacing);     \
+    Vector2 ts = MeasureTextEx(state->font, (glyph), state->sizeText, state->spacing);     \
         width += ts.x;                                                \
         i += (int)(sizeof(cmd) - 1) + 1;                              \
     }
 
-#define GREC_LETTER(cmd, adress) else if( strcmp(tokens[*index].text, cmd) == 0){      \
-    box.token = adress;                                                \
-    Vector2 size = MeasureTextEx(font, box.token->text, fontSize, spacing); \
-    box.width = size.x;\
-    box.height = size.y;\
-    } \
+#define GREC_LETTER(cmd, adress) \
+    else if (strcmp(tokens[*index].text, cmd) == 0) { \
+        box.token = *(adress); \
+        box.hasToken = true; \
+        Vector2 size = MeasureTextEx(state->font, box.token.text, state->sizeText, state->spacing); \
+        box.width = size.x; \
+        box.height = size.y; \
+    }
 
 #define RMVI_GROW_CAP(cap) ((cap) ? (cap) * 2 : 32)
 #define RMVI_ENSURE_CAP(ptr, count, cap, T) do {                     \
@@ -65,15 +67,6 @@ Font mathFont;
 
 
 
-typedef struct {
-    char type;
-    Color color;
-    Vector2 position;
-    float sizeText;
-    float spacing;
-    float interline;
-    int miseEnPage;
-} State;
 
 
 
@@ -83,14 +76,6 @@ typedef enum{
     EQUATION,
     SUB
 } Style;
-
-State state = {
-    .sizeText = SIZE_TEXT,
-    .spacing = SIZE_SPACING,
-    .interline = INTERLIGNE,
-    .miseEnPage = CLASSIC
-};
-
 
 
 static Token IntToken        = { TOKEN_SYMBOL, "∫" };
@@ -116,11 +101,11 @@ static Token neqToken        = { TOKEN_SYMBOL, "≠" };
 static Token leqToken        = { TOKEN_SYMBOL, "≤" };
 static Token geqToken        = { TOKEN_SYMBOL, "≥" };
 static Token infinityToken   = { TOKEN_SYMBOL, "∞" };
-
 static Token spaceToken      = { TOKEN_SYMBOL, " " };
 static Token tiretToken      = { TOKEN_SYMBOL, "-"};
 static Token displaceToken   = { TOKEN_DISPLACE, ""}; 
 static Token breakToken      = { TOKEN_BREAK, ""};
+static Token crossToken      = { TOKEN_SYMBOL,"×"};
 
 typedef struct {
     char path[512];
@@ -153,15 +138,11 @@ static Texture2D *rmviGetTexturePtrCached(const char *path){
     }
     return &e->tex;
 }
-
-
-
 static int isOperator(char c) {
     return (c == '+' || c == '-' || c == '*' || c == '='|| c == '.' || c ==':' || c == ',' || c == '<' || 
     c == '>' || c == ')' || c == '(');
 }
-static int isAlphaNum(unsigned char c)
-{
+static int isAlphaNum(unsigned char c){
     // ASCII letters & digits
     if ((c >= 'a' && c <= 'z') ||
         (c >= 'A' && c <= 'Z') ||
@@ -195,7 +176,7 @@ int tokenTypeCommand(Token token){
         return TOKEN_OTHER;
 }
 
-// renvoie la liste des différents tokens
+// renvoie la liste des différents tokens ici enlever le maxTokens
 int rmviTokenizeLatex(const char *latex, Token *tokens, int maxTokens){
     int i = 0;
     int count = 0;
@@ -291,18 +272,51 @@ int rmviTokenizeLatex(const char *latex, Token *tokens, int maxTokens){
     }
     return count;
 }
+// peut etre plutot renvoyé un pointeur
+State rmviGetState(float sizeText,float spacing,float interline,float widthMax,bool addSpace,int miseEnPage, Font font, Color color){
+    State state = {0};
+    state.sizeText = sizeText;
+    state.spacing = spacing;
+    state.interline = interline;
+    state.widthMax = widthMax;
+    state.font = font;
+    state.addSpace = addSpace;
+    state.color = color;
+    return state;
+}
+State rmviGetStateClassic(){
+    return rmviGetState(40,2,INTERLIGNE,RATIO_LEN_TEXT,true,0,mathFont, WHITE);
+}
 
-Vector2 rmviMeasureToken(Token *token, Font font, float fontSize, float spacing, bool addSpace){
+State copyStateRatio(State *state, float ratio){
+    State copyState = *state;
+    copyState.sizeText *= ratio;
+    copyState.spacing *= ratio;
+    return copyState;
+}
+RenderBox getRenderBox(State *state){
+    // définie la couleur, font, taile, spacing et si il faut un espace ou non;
+    RenderBox box = {0};
+    box.color = state->color;
+    box.font = state->font;
+    box.sizeText = state->sizeText;
+    box.spacing = state->spacing;
+    box.addSpace = state->addSpace;
+    box.color = state->color;
+    return box;
+}
+
+
+Vector2 rmviMeasureToken(Token *token, State *state){
     Vector2 size = Vector2Zero();
     switch (token->type){
         case TOKEN_SYMBOL:
-            size = MeasureTextEx(font, token->text, fontSize, spacing);
-            if(addSpace) size.x += RATIO_SPACE*fontSize;
+            size = MeasureTextEx(state->font, token->text, state->sizeText, state->spacing);
+            if(state->addSpace) size.x += RATIO_SPACE*state->sizeText;
             break;
         case TOKEN_OPERATOR:
-            size = MeasureTextEx(font, token->text, fontSize, spacing);
-            break;
-            
+            size = MeasureTextEx(state->font, token->text, state->sizeText, state->spacing);
+            break;   
     }
     return size;
 }
@@ -357,6 +371,36 @@ static ImgOpts rmviParseImgOpts(const char *s){
     }
     return o;
 }
+void rmviFixChildPositionNext(RenderBox *box, State *state){
+    Vector2 cursor = Vector2Zero();
+    float height = box->size;
+    box->height += height;
+    for(int i = 0; i < box->itemCount; i++){
+        height = max(box->items[i].height,height);
+        if(cursor.x + box->items[i].width > state->widthMax ){
+            box->items[i].isEndLine = true;
+            rmviLineSkip(&cursor,INTERLIGNE, box->size, height);
+            box->height += height + INTERLIGNE*box->size;
+            height = box->size;
+        }
+        if( box->items[i].hasToken && box->items[i].token.type == TOKEN_DISPLACE){
+            box->items[i].token = (Token) {0};
+            box->items[i].isEndLine = true;
+            rmviLineSkip(&cursor,INTERLIGNE_ITEM, box->size, height);
+            box->height += height + INTERLIGNE*box->size; ;
+            height = box->size;
+        }
+        else {
+            box->items[i].pos.x += cursor.x;
+            box->items[i].pos.y += cursor.y;
+            height = max(height,box->items[i].height);
+            cursor.x += box->items[i].width;
+            if(box->width < RATIO_LEN_TEXT) box->width +=box->items[i].width;
+            else box->width = RATIO_LEN_TEXT;
+        }
+    }
+}
+
 
 // to do implémenter les shifts
 void rmviBuildImageOpt(RenderBox *box, ImgOpts imgOpts){
@@ -400,22 +444,22 @@ void rmviBuildImageOpt(RenderBox *box, ImgOpts imgOpts){
 }
 
 // the boolean impose if we reduce the police or not
-RenderBox rmviBuildFrac(Token *tokens,int tokenCount, int *index, Font font, float fontSize, float spacing, bool reduce){  
+RenderBox rmviBuildFrac(Token *tokens,int tokenCount, int *index, State *state, bool reduce){  
     float ratio = (reduce ? RATIO_SIZE_FRAC : 1 );
-    float padding = ratio * fontSize * 0.1f;
-    RenderBox box = {0};
-
-    RenderBox lineBox = (RenderBox){0};
+    float padding = ratio * state->sizeText * 0.1f;
+    RenderBox box = getRenderBox(state);
+    RenderBox lineBox = getRenderBox(state);
     lineBox.isLine = true;
-    lineBox.size   = ratio * fontSize * 0.05f;
-    lineBox.pos    = (Vector2) {0,fontSize/2};
-
-    RenderBox numBox = rmviMain2Box(tokens,tokenCount,font,ratio * fontSize, ratio * spacing , index);
+    lineBox.size   = ratio * state->sizeText * 0.05f;
+    lineBox.pos    = (Vector2) {0,state->sizeText/2};
+    State copyState = copyStateRatio(state, ratio);
+    RenderBox numBox = rmviMain2Box(tokens,tokenCount, &copyState, index);
     numBox.pos.y = lineBox.pos.y - numBox.height - padding;
-    RenderBox denBox = rmviMain2Box(tokens,tokenCount,font,ratio * fontSize, ratio * spacing , index);
+    RenderBox denBox = rmviMain2Box(tokens,tokenCount, &copyState, index);
+    rmviFixChildPositionNext(&numBox,state);
+    rmviFixChildPositionNext(&denBox,state);
     denBox.pos.y = lineBox.pos.y + lineBox.size + padding;
     lineBox.width  =  fmaxf(numBox.width, denBox.width) + 2*padding;
-
     box.itemCount = 3;
     box.items = MemAlloc(sizeof(RenderBox) * box.itemCount);
     box.items[0] = numBox;
@@ -423,7 +467,6 @@ RenderBox rmviBuildFrac(Token *tokens,int tokenCount, int *index, Font font, flo
     box.items[2] = lineBox;
     box.width  = lineBox.width;
     box.height = numBox.height + denBox.height + 2.0f * padding + lineBox.size;
-
     float xShift = (denBox.width - numBox.width) * 0.5f;
     box.items[0].pos.x += fmaxf(xShift, 0.0f) + padding;
     box.items[1].pos.x += fmaxf(-xShift, 0.0f) + padding;
@@ -431,29 +474,30 @@ RenderBox rmviBuildFrac(Token *tokens,int tokenCount, int *index, Font font, flo
 }
 
 // build l'exposant et le sub
-RenderBox rmviBuildSub(Token *tokens, int tokenCount, int *index,Font font, float fontSize, float spacing){
-    RenderBox box ={0};
-    Vector2 cursor = Vector2Zero();
+RenderBox rmviBuildSub(Token *tokens, int tokenCount, int *index,State *state){
+    RenderBox box = getRenderBox(state);
     float yShift = 0.0f;
     if ((*index - 1) >= 0) {
         if (tokens[*index - 1].text && strncmp(tokens[*index - 1].text, "^", 1) == 0) {
-            yShift = -RATIO_INDEX_UP * fontSize;
+            yShift = -RATIO_INDEX_UP * state->sizeText;
         } else if (tokens[*index - 1].text && strncmp(tokens[*index - 1].text, "_", 1) == 0) {
-            yShift =  RATIO_INDEX_DOWN * fontSize;
+            yShift =  RATIO_INDEX_DOWN * state->sizeText;
         }
     }
-
-    if (tokens[*index].type == TOKEN_LBRACE) {
-        box = rmviBuildBrace(tokens,index,tokenCount,font,RATIO_INDEX *fontSize, RATIO_INDEX *spacing);
+    if (tokens[*index].type == TOKEN_LBRACE) { 
+        box = rmviBuildBrace(tokens,index,tokenCount,state);
+        box.pos.y += yShift;
+        box.pos.x += state->spacing;
     }
     else {
-        Vector2 sizeText = rmviMeasureToken(&tokens[*index], font,RATIO_INDEX * fontSize, RATIO_INDEX *spacing, false);
-        box.pos = (Vector2){cursor.x, cursor.y + yShift };
+        Vector2 sizeText = rmviMeasureToken(&tokens[*index], state);
+        box.pos = (Vector2){state->spacing, yShift };
         box.width  = sizeText.x;
         box.height = sizeText.y;
-        box.token  = &tokens[*index];
-        box.size   = RATIO_INDEX * fontSize;
-        cursor.x += sizeText.x;
+        box.token  = tokens[*index];
+        box.hasToken = true;
+        box.size   = state->sizeText;
+        // retour à la normale;
         (*index)++;
     }
     return box;
@@ -548,11 +592,12 @@ bool depthContinue(const Depth *depth){
     return (depth->brace > 0 || depth->bracket > 0 || depth->item > 0);
 }
 
-RenderBox rmviBuildOther(Token *tokens,int tokenCount,int *index,Font font,float fontSize,float spacing){
-    RenderBox box ={0};
+RenderBox rmviBuildOther(Token *tokens,int tokenCount,int *index,State *state){
+    RenderBox box = getRenderBox(state);
+    box.addSpace = false; // ici à voir comment on traite les espace, via les box ou via les state :/
     Vector2 cursor = Vector2Zero();
     box.pos = cursor;
-    box.size = fontSize;
+    box.size = state->sizeText;
     if(false);
     GREC_LETTER("/int",      &IntToken) 
     GREC_LETTER("/Delta",    &DeltaToken)
@@ -578,13 +623,14 @@ RenderBox rmviBuildOther(Token *tokens,int tokenCount,int *index,Font font,float
     GREC_LETTER("/leq",      &leqToken)
     GREC_LETTER("/geq",      &geqToken)
     GREC_LETTER("/infinity", &infinityToken)
-    
+    GREC_LETTER("/cross",    &crossToken)
     (*index)++;
     return box;
 }
-RenderBox rmviBuildBrace(Token *tokens, int *index, int tokenCount, Font font, int fontSize, int spacing){
-    RenderBox box ={0};
-    Depth depthSub ={0};
+
+RenderBox rmviBuildBrace(Token *tokens, int *index, int tokenCount, State *state){
+    RenderBox box = getRenderBox(state);
+    Depth depthSub = {0};
     depthUpdate(&depthSub,tokens,index);
     int childCount = 0;
     int childCap = 0;
@@ -594,9 +640,9 @@ RenderBox rmviBuildBrace(Token *tokens, int *index, int tokenCount, Font font, i
         if(depthUpdate(&depthSub,tokens,index)){
         }
         else{
-            RenderBox child = rmviMain2Box(tokens, tokenCount, font, fontSize,spacing, index);
+            RenderBox child = rmviMain2Box(tokens, tokenCount, state, index);
             RMVI_PUSH(children,childCount,childCap,RenderBox, child);
-            box.width += child.width;                       // ici à modifier ?
+            //box.width += child.width;                     // ici à modifier ?
             box.height = max(box.height, child.height);
         }
     }
@@ -607,36 +653,7 @@ RenderBox rmviBuildBrace(Token *tokens, int *index, int tokenCount, Font font, i
     box.itemCount = childCount;
     return box;
 }
-void rmviFixChildPositionNext(RenderBox *box){
-    Vector2 cursor =Vector2Zero();
-    float height = box->size;
-    box->height += height;
-    for(int i = 0; i < box->itemCount; i++){
-        height = max(box->items[i].height,height);
-        if(cursor.x + box->items[i].width > RATIO_LEN_TEXT){ // ici à modifier je pense
-            box->items[i].isEndLine = true;
-            rmviLineSkip(&cursor,INTERLIGNE, box->size, height);
-            box->height += height + INTERLIGNE*box->size;
-            height = box->size;
-        }
-        if( box->items[i].token && box->items[i].token->type == TOKEN_DISPLACE){
-            box->items[i].token = NULL;
-            box->items[i].isEndLine = true;
-            rmviLineSkip(&cursor,INTERLIGNE_ITEM, box->size, height);
-            box->height += height + INTERLIGNE*box->size; ;
-            height = box->size;
-        }
-        // if passage à la ligne ?
-        else {
-            box->items[i].pos.x += cursor.x;
-            box->items[i].pos.y += cursor.y;
-            height = max(height,box->items[i].height);
-            cursor.x += box->items[i].width;
-            if(box->width < RATIO_LEN_TEXT) box->width +=box->items[i].width;
-            else box->width = RATIO_LEN_TEXT;
-        }
-    }
-}
+
 
 void rmviFixChildPositionUnder(RenderBox *box, float ratio){
     Vector2 cursor =Vector2Zero();
@@ -649,67 +666,69 @@ void rmviFixChildPositionUnder(RenderBox *box, float ratio){
 
 }
 
-RenderBox rmviBuildSpace(Token *tokens,int tokenCount,int *index,Font font,float fontSize,float spacing){
-    RenderBox box ={0};
-    box.size = fontSize;
-    box.token = &spaceToken; 
-    Vector2 size = MeasureTextEx(font, box.token->text, fontSize, spacing); 
+RenderBox rmviBuildSpace(Token *tokens,int tokenCount,int *index,State *state){
+    RenderBox box = getRenderBox(state);
+    box.size = state->sizeText;
+    box.token = spaceToken;
+    Vector2 size = MeasureTextEx(state->font, box.token.text, state->sizeText, state->spacing); 
     box.width = size.x; 
     box.height = size.y;
     (*index)++;
     return box;
 }
-RenderBox rmviBuildItem(Token *tokens,int tokenCount,int *index,Font font,float fontSize,float spacing){
-    RenderBox box = {0};
+
+RenderBox rmviBuildItem(Token *tokens,int tokenCount,int *index,State *state){
+    RenderBox box = getRenderBox(state);
     RenderBox *children = NULL;
     int childCap = 0;
     int childCount = 0;
-    box.size = fontSize;
+    box.size = state->sizeText;
     if(tokens[*index].type == TOKEN_RBRACKET){
         // cas ou item[qqch]
     }
     else{
-        RenderBox child = {0};
-        child.token = &tiretToken;
-        child.width = rmviMeasureToken(child.token,font,fontSize,spacing,true).x;
-        child.size = fontSize;
+        RenderBox child = getRenderBox(state);
+        child.token = tiretToken;
+        child.width = rmviMeasureToken(&child.token,state).x;
+        child.size = state->sizeText;
         RMVI_PUSH(children, childCount, childCap, RenderBox, child);
         // on remplace le premier box par un tiret -
     }
     while(tokens[*index].type != TOKEN_END_ITEMIZE && tokens[*index].type != TOKEN_ITEM){
         ERROR_OUT_OF_INDEX(*index, tokenCount);
         RenderBox child = {0};
-        child = rmviMain2Box(tokens,tokenCount,font,fontSize,spacing,index);
+        child = rmviMain2Box(tokens,tokenCount,state,index);
         RMVI_PUSH(children, childCount, childCap, RenderBox, child);
 
     }
     box.items = MemAlloc(sizeof(RenderBox) * childCount);
     memcpy(box.items, children, sizeof(RenderBox) * childCount);
     box.itemCount = childCount;
-    rmviFixChildPositionNext(&box);
+    rmviFixChildPositionNext(&box, state);
     free(children);
     return box;
 }
 
-RenderBox rmviBuildBeginItemize(Token *tokens,int tokenCount,int *index,Font font,float fontSize,float spacing){
-    RenderBox box = {0};
+RenderBox rmviBuildBeginItemize(Token *tokens,int tokenCount,int *index,State *state){
+    RenderBox box = getRenderBox(state);
     RenderBox *children = NULL;
     int childCap = 0;
     int childCount = 0;
     Depth depth = {0};
     depthUpdate(&depth,tokens,index);
-    box.size = fontSize;
-    box.token = &displaceToken;
+    box.size = state->sizeText;
+    box.token = displaceToken;
     // ici parametre à imposer
-    box.pos = (Vector2) {RATIO_INDENT_BEGIN*fontSize , 0 };
+    //copyStateRatio(state, RATIO_INDEX); 
+    box.pos = (Vector2) {RATIO_INDENT_BEGIN*state->sizeText , 0 };
     box.isEndLine = true;
     while (depthContinue(&depth)){
         if(depthUpdate(&depth,tokens,index)){
         }
         else if(tokens[*index].type == TOKEN_ITEM){
             (*index)++; //skip begin
-            RenderBox child ={0};
-            child = rmviBuildItem(tokens, tokenCount,index,font, fontSize,spacing);
+            RenderBox child = getRenderBox(state);
+            child = rmviBuildItem(tokens, tokenCount,index,state);
             RMVI_PUSH(children, childCount, childCap, RenderBox, child);
         }
         else{ 
@@ -736,7 +755,7 @@ RenderBox rmviBuildBreak(Token *tokens,int tokenCount, int *index){
     // la le problème c'est que le tems n'est pas compris
     // soit on rajoute un parametre soi on voit comment on peut modifier le text
     // le truc c'est qu'il sera traité comme du text donc vaut mieux pas
-    box.token = &breakToken;
+    box.token = breakToken;
     (*index) ++;
     char *timeStr = rmviReadSymbolText(tokens, tokenCount, index, '{', '}');
     // ici j'ai une fonction qui peut ressortir ca en vrai
@@ -746,19 +765,21 @@ RenderBox rmviBuildBreak(Token *tokens,int tokenCount, int *index){
     return box;
 }
 
-RenderBox rmviMain2Box(Token *tokens,int tokenCount,Font font,float fontSize,float spacing, int *index){
+RenderBox rmviMain2Box(Token *tokens,int tokenCount,State *state, int *index){
     // mettre un switch case
-    RenderBox box = {0};
+    RenderBox box = getRenderBox(state);
     Vector2 cursor = Vector2Zero();
     if (tokens[*index].type == TOKEN_FRAC){
         (*index)++; // skip \frac
-        box = rmviBuildFrac(tokens, tokenCount,index,font, fontSize,spacing, true);
+        State copyState = *state;
+        copyState.addSpace = false;
+        box = rmviBuildFrac(tokens, tokenCount,index,&copyState, true);
     }
     else if(tokens[*index].type == TOKEN_BREAK){
         box = rmviBuildBreak(tokens, tokenCount,index);
     }
     else if (tokens[*index].type == TOKEN_BEGIN_ITEMIZE){
-        box = rmviBuildBeginItemize(tokens, tokenCount,index,font, fontSize,spacing);
+        box = rmviBuildBeginItemize(tokens, tokenCount,index,state);
         rmviFixChildPositionUnder(&box,1.0f);
     }
     else if(tokens[*index].type == TOKEN_LOAD_IMAGE){
@@ -772,48 +793,54 @@ RenderBox rmviMain2Box(Token *tokens,int tokenCount,Font font,float fontSize,flo
         }
         char *path = rmviReadSymbolText(tokens, tokenCount, index,'{','}');
         box.isImage = true;
-        box.size = fontSize;
+        box.size = state->sizeText;
         box.texPtr = rmviGetTexturePtrCached(path);
         rmviBuildImageOpt(&box,imgOpts);
         free(path);
     }
     else if (tokens[*index].type == TOKEN_OTHER){
-        box = rmviBuildOther(tokens,tokenCount,index,font,fontSize,spacing);
+        box = rmviBuildOther(tokens,tokenCount,index,state);
     }
     else if (tokens[*index].type == TOKEN_SPACE){
-        box = rmviBuildSpace(tokens,tokenCount,index,font,fontSize,spacing);
+        box = rmviBuildSpace(tokens,tokenCount,index,state);
     }
     else if( tokens[*index].type == TOKEN_SUB){
         (*index)++;
-        box = rmviBuildSub(tokens,tokenCount,index,font,fontSize,spacing);
+        State copyState = copyStateRatio(state,RATIO_INDEX);
+        box = rmviBuildSub(tokens,tokenCount,index,&copyState);
+        rmviFixChildPositionNext(&box,state);
+        
         // fonction qui place les box à la bonne place
-        rmviFixChildPositionNext(&box);
     }
     else if (tokens[*index].type == TOKEN_LBRACE){
-        box = rmviBuildBrace(tokens,index,tokenCount,font,fontSize,spacing);
+        box = rmviBuildBrace(tokens,index,tokenCount,state);
     }
     else if(tokens[*index].type == TOKEN_NEXTLINE){ //ici
-        box.token = &displaceToken;
-        box.size = fontSize;
+        box.token = displaceToken;
+        box.size = state->sizeText;
         (*index)++;
     }
     else{
-        // met un espace après un mot si n'est pas après _ ou ^
-        Vector2 size = rmviMeasureToken(&tokens[*index], font, fontSize, spacing, (tokens[*index+1].type != TOKEN_SUB));
+        // met un espace après un mot si n'est pas après _ ou ^, et que ce n'est pas le dernier mot
+        bool old = state->addSpace;
+        state->addSpace =  old && (tokens[*index + 1].type != TOKEN_SUB) && ((*index) < (tokenCount-1)) ;
+        Vector2 size = rmviMeasureToken(&tokens[*index], state);
+        state->addSpace = old;
         box.pos.x = cursor.x;
         box.pos.y = cursor.y;
         box.width = size.x;
         box.height = size.y;
-        box.token = &tokens[*index];
-        box.size = fontSize;
+        box.token = tokens[*index];
+        box.hasToken = true;
+        box.size = state->sizeText;
         cursor.x += size.x;
         (*index)++;
     }
     return box;
 }
+
 void rmviFixBoxPosition(RenderBox *boxes, RenderBox *box, int *index, int *count, Vector2 *cursor){
-    if (box->token && box->token->type == TOKEN_DISPLACE){
-        
+    if (box->hasToken && box->token.type == TOKEN_DISPLACE){
         rmviLineSkip(cursor,INTERLIGNE_ITEM, box->size, box->size);
         box->pos = Vector2Add( box->pos, *cursor);
         cursor->y += box->height; 
@@ -823,53 +850,56 @@ void rmviFixBoxPosition(RenderBox *boxes, RenderBox *box, int *index, int *count
         cursor->x += box->width;
     }   
 }
-void rmviLineSkip(Vector2* cursor, float ratio, float fontSize, float height){
+
+void rmviLineSkip(Vector2* cursor, float ratio, float sizeText, float height){
     cursor->x = 0.0f;
-    cursor->y += ratio*fontSize+ height;
+    cursor->y += ratio*sizeText+ height;
 }
 
-int rmviBuildRenderBoxes(Token *tokens,int tokenCount,RenderBox *boxes,Font font,float fontSize,float spacing){
+int rmviBuildRenderBoxes(Token *tokens,int tokenCount,RenderBox *boxes,State *state){
     Vector2 cursor = Vector2Zero();
     int count = 0;
     int oldIndex = 0;
-    float height = fontSize;
+    float height = state->sizeText;
     RenderBox box = {0};
     for (int index = 0; index < tokenCount; ){
-        height = max(height,boxes[count-1].height);
+        if(count>0) height = max(height,boxes[count-1].height);
         if(cursor.x > RATIO_LEN_TEXT ){
-            rmviLineSkip(&cursor,INTERLIGNE, fontSize,height);
+            rmviLineSkip(&cursor,INTERLIGNE, state->sizeText,height);
             if (count !=0) boxes[count-1].isEndLine = true;
-            height = fontSize;
+            height = state->sizeText;
         }
         if(tokens[index].type == TOKEN_NEXTLINE){
             if (count !=0) boxes[count-1].isEndLine = true;
-            rmviLineSkip(&cursor,INTERLIGNE, fontSize,height);
+            rmviLineSkip(&cursor,INTERLIGNE, state->sizeText,height);
             (index)++;
-            height = fontSize;
+            height = state->sizeText;
         }
-        box = rmviMain2Box(tokens,tokenCount,font,fontSize,spacing, &index);
+        box = rmviMain2Box(tokens,tokenCount,state, &index);
         rmviFixBoxPosition(boxes, &box, &index, &count, &cursor);
         boxes[count++] = box;
     }
     return count;
 }
 
-void rmviDrawRenderBox(RenderBox *box,Vector2 basePos,Font font,float fontSize,float spacing,Color color){ 
+void rmviDrawRenderBox(RenderBox *box,Vector2 basePos){ 
     Vector2 drawPos;
     if(box->isPositionned) drawPos = (Vector2){ box->pos.x,box->pos.y }; 
     else drawPos = (Vector2) { basePos.x + box->pos.x, basePos.y + box->pos.y }; 
     if (box->itemCount > 0 && box->items){ 
         float cursorX = 0.0f; 
-        for (int i = 0; i < box->itemCount; i++){ RenderBox *child = &box->items[i]; 
-            rmviDrawRenderBox(child,drawPos,font,child->size,spacing,color); 
+        for (int i = 0; i < box->itemCount; i++){
+            RenderBox *child = &box->items[i]; 
+            rmviDrawRenderBox(child,drawPos); 
             cursorX += child->width;
+          
         }
     }
-    else if (box->token){
-            DrawTextEx(font,box->token->text,drawPos,fontSize,spacing,color);
+    else if (box->hasToken){
+            DrawTextEx(box->font,box->token.text,drawPos,box->sizeText,box->spacing,box->color);
     } 
     else if(box->isLine){
-        DrawLineEx((Vector2) {drawPos.x,drawPos.y}, (Vector2) {drawPos.x + box->width, drawPos.y},box->size,color);
+        DrawLineEx((Vector2) {drawPos.x,drawPos.y}, (Vector2) {drawPos.x + box->width, drawPos.y},box->size,box->color);
     }
     else if(box->isImage){
         Rectangle src = (Rectangle){0,0,(float)box->texPtr->width,(float)box->texPtr->height};
@@ -878,19 +908,19 @@ void rmviDrawRenderBox(RenderBox *box,Vector2 basePos,Font font,float fontSize,f
     }
 }
 
-void rmviDrawRenderBoxes(RenderBox *boxes,int boxCount,Vector2 basePos,Font font,float fontSize,float spacing,Color color){
+void rmviDrawRenderBoxes(RenderBox *boxes,int boxCount,Vector2 basePos){
     for (int i = 0; i < boxCount; i++){
-        rmviDrawRenderBox(&boxes[i],basePos,font,fontSize,spacing,color);
+        rmviDrawRenderBox(&boxes[i],basePos);
     }
 }
 
-void rmviDrawRenderBoxesCentered(float *listWidth,float height, RenderBox *boxes, int boxCount, Vector2 centerPos,Font font,float fontSize,float spacing,Color color){
+void rmviDrawRenderBoxesCentered(rmviFloatList *listWidth,float height, RenderBox *boxes, int boxCount, Vector2 centerPos){
     Vector2 centeredPos = centerPos;
     centeredPos.y = centerPos.y - height / 2;
     int endLine = 0;
     for(int i =0; i< boxCount; i++){
-        centeredPos.x = centerPos.x - listWidth[endLine]/2;
-        rmviDrawRenderBox(&boxes[i],centeredPos,font,fontSize,spacing,color);
+        centeredPos.x = centerPos.x - listWidth->data[endLine]/2;
+        rmviDrawRenderBox(&boxes[i],centeredPos);
         if(boxes[i].isEndLine) endLine ++;
     }
 }
@@ -900,6 +930,7 @@ AnimText* initAnimText(){
     anim->boxEnd = -1;
     return anim;
 }
+
 void resetAnimText(AnimText *anim){
     *anim = (AnimText){0};
     anim->boxEnd = -1;
@@ -911,17 +942,21 @@ void freeAnimText(AnimText *anim){
 
 float boxWriteTime(RenderBox box){
     float time = 0;
-    if(box.token && box.token->type == TOKEN_BREAK) return box.time;
-    if(box.itemCount>0){
-        for(int i =0; i< box.itemCount; i++){
-            time+= boxWriteTime(box.items[i]);
+    if (box.hasToken && box.token.type == TOKEN_BREAK) return box.time;
+
+    if (box.itemCount > 0){
+        for (int i = 0; i < box.itemCount; i++){
+            time += boxWriteTime(box.items[i]);
         }
     }
-    if(box.token && box.token->text) return time + ANIM_CLAVIE_SPEED*(1.0f + GetCodepointCount(box.token->text));
-    else return time;
+
+    if (box.hasToken)
+        return time + ANIM_CLAVIE_SPEED * (1.0f + GetCodepointCount(box.token.text));
+    else
+        return time;
 }
 
-void rmviDrawRenderBoxAnimed(RenderBox *box,Vector2 basePos,Font font,float fontSize,float spacing,Color color, AnimText* anim){ 
+void rmviDrawRenderBoxAnimed(RenderBox *box,Vector2 basePos, AnimText* anim){ 
     Vector2 drawPos;
     AnimText subAnim = *anim;
     if(box->isPositionned) drawPos = (Vector2){ box->pos.x,box->pos.y }; 
@@ -932,8 +967,8 @@ void rmviDrawRenderBoxAnimed(RenderBox *box,Vector2 basePos,Font font,float font
             anim->boxEnd = i;
             RenderBox *child = &box->items[i];
             float timeToBox = boxWriteTime(*child);
-            if(subAnim.animTime>timeToBox) rmviDrawRenderBox(child,drawPos,font,child->size,spacing,color);
-            else rmviDrawRenderBoxAnimed(child,drawPos,font,child->size,spacing,color,&subAnim);
+            if(subAnim.animTime>timeToBox) rmviDrawRenderBox(child,drawPos);
+            else rmviDrawRenderBoxAnimed(child,drawPos,&subAnim);
             subAnim.animTime -= timeToBox;
             cursorX += child->width;
             if (subAnim.animTime <= 0){
@@ -943,15 +978,15 @@ void rmviDrawRenderBoxAnimed(RenderBox *box,Vector2 basePos,Font font,float font
             }
         }
     }
-    else if (box->token){
+    else if (box->hasToken){
         float timeToBox = boxWriteTime(*box);
         float ratio = subAnim.animTime / timeToBox;
         if (ratio > 1.0f){
-            DrawTextEx(font,box->token->text,drawPos,fontSize,spacing,color);
+            DrawTextEx(box->font,box->token.text,drawPos,box->sizeText,box->spacing,box->color);
             return;
         }
         int cpCount = 0;
-        int *cps = LoadCodepoints(box->token->text, &cpCount);
+        int *cps = LoadCodepoints(box->token.text, &cpCount);
         anim->letterCount = (cpCount >= 0) ? cpCount : 0;
         int target = (int)(ratio * (float)cpCount);
         if (target >= cpCount) target = cpCount;
@@ -969,10 +1004,10 @@ void rmviDrawRenderBoxAnimed(RenderBox *box,Vector2 basePos,Font font,float font
             out[outLen] = '\0';
         }
         UnloadCodepoints(cps);
-        DrawTextEx(font, out, drawPos, fontSize, spacing, color);
+        DrawTextEx(box->font, out, drawPos, box->sizeText, box->spacing, box->color);
     }
     else if(box->isLine){
-        DrawLineEx((Vector2) {drawPos.x,drawPos.y}, (Vector2) {drawPos.x + box->width, drawPos.y},box->size,color);
+        DrawLineEx((Vector2) {drawPos.x,drawPos.y}, (Vector2) {drawPos.x + box->width, drawPos.y},box->size,box->color);
     }
     else if(box->isImage){
         Rectangle src = (Rectangle){0,0,(float)box->texPtr->width,(float)box->texPtr->height};
@@ -982,7 +1017,7 @@ void rmviDrawRenderBoxAnimed(RenderBox *box,Vector2 basePos,Font font,float font
 }
 
 // la dernière lettre d'un mot s'écrit en commencant l'audio du suivant à cause des erreurs d'arrondi :/
-void rmviDrawRenderBoxesAnimed(RenderBox *boxes,int boxCount,Vector2 basePos,Font font,float fontSize,float spacing, Color color, AnimText* anim){
+void rmviDrawRenderBoxesAnimed(RenderBox *boxes,int boxCount,Vector2 basePos,AnimText* anim){
     anim->animTime += 1.0f/50.0f;
     float timeAccum = 0.0f;
     int lastBoxEnd = anim->boxEnd;
@@ -990,13 +1025,13 @@ void rmviDrawRenderBoxesAnimed(RenderBox *boxes,int boxCount,Vector2 basePos,Fon
         // the time to write is lower than the time we have
         float boxTime = boxWriteTime(boxes[i]);
         if (timeAccum + boxTime <= anim->animTime) {
-            rmviDrawRenderBox(&boxes[i],basePos,font,fontSize,spacing,color);
+            rmviDrawRenderBox(&boxes[i],basePos);
             timeAccum += boxTime;
         }
         else{
             AnimText subAnim = {0};
             subAnim.animTime = anim->animTime-timeAccum;
-            rmviDrawRenderBoxAnimed(&boxes[i],basePos,font,fontSize,spacing,color,&subAnim);
+            rmviDrawRenderBoxAnimed(&boxes[i],basePos,&subAnim);
             anim->letterCount = subAnim.letterCount;
             anim->boxEnd = (subAnim.boxEnd > 0) ? subAnim.boxEnd : i;
             break;
@@ -1006,9 +1041,9 @@ void rmviDrawRenderBoxesAnimed(RenderBox *boxes,int boxCount,Vector2 basePos,Fon
     anim->hasChanged = (lastBoxEnd != anim->boxEnd);
 }
 
-void rmviDrawRenderBoxesCenteredAnimed(RenderBox *boxes,int boxCount,Vector2 basePos,Font font,float fontSize,float spacing, Color color, AnimText* anim){
-    float *listWidth; 
-    int linesCount =rmviCalcWidthLine(boxes, boxCount,&listWidth);
+void rmviDrawRenderBoxesCenteredAnimed(RenderBox *boxes,int boxCount,Vector2 basePos, AnimText* anim){
+    rmviFloatList listWidth; 
+    rmviCalcWidthLine(boxes, boxCount,&listWidth);
     Vector2 centeredPos = basePos;
     centeredPos.y = basePos.y - rmviCalcHeightTotal(boxes, boxCount);
     int endLine = 0;
@@ -1016,18 +1051,18 @@ void rmviDrawRenderBoxesCenteredAnimed(RenderBox *boxes,int boxCount,Vector2 bas
     float timeAccum = 0.0f;
     int lastBoxEnd = anim->boxEnd;
     for (int i = 0; i < boxCount; i++){
-        centeredPos.x = basePos.x - listWidth[endLine]/2;
+        centeredPos.x = basePos.x - listWidth.data[endLine]/2;
         if(boxes[i].isEndLine) endLine ++;
         // the time to write is lower than the time we have
         float boxTime = boxWriteTime(boxes[i]);
         if (timeAccum + boxTime <= anim->animTime) {
-            rmviDrawRenderBox(&boxes[i],centeredPos,font,fontSize,spacing,color);
+            rmviDrawRenderBox(&boxes[i],centeredPos);
             timeAccum += boxTime;
         }
         else{
             AnimText subAnim = {0};
             subAnim.animTime = anim->animTime-timeAccum;
-            rmviDrawRenderBoxAnimed(&boxes[i],centeredPos,font,fontSize,spacing,color,&subAnim);
+            rmviDrawRenderBoxAnimed(&boxes[i],centeredPos,&subAnim);
             anim->letterCount = subAnim.letterCount;
             anim->boxEnd = (subAnim.boxEnd > 0) ? subAnim.boxEnd : i;
             break;
@@ -1035,30 +1070,30 @@ void rmviDrawRenderBoxesCenteredAnimed(RenderBox *boxes,int boxCount,Vector2 bas
         
     }
     anim->hasChanged = (lastBoxEnd != anim->boxEnd);
-    free(listWidth);
+    rmviFloatListFree(&listWidth);
 }
 
-
-int rmviCalcWidthLine(RenderBox *boxes, int boxCount, float **outListWidth){
-    float *listWidth = NULL;
-    float width = 0.0f;
-    int lineCap = 0;
-    int countLine = 0;
-
-    if (outListWidth) *outListWidth = NULL;
-    if (!boxes || boxCount <= 0 || !outListWidth) return 0;
-
+// soit on lui en donne un soit il en renvoi un à voir comment on fait évoluer ca
+void rmviCalcWidthLine(RenderBox *boxes, int boxCount, rmviFloatList *floatList){
+    float width = 0;
+    rmviFloatListInit(floatList);
     for (int i = 0; i < boxCount; i++) {
         width += boxes[i].width;
-
         if (boxes[i].isEndLine || i == (boxCount - 1)) {
-            RMVI_PUSH(listWidth, countLine, lineCap, float, min(width, RATIO_LEN_TEXT));
+            rmviFloatListAdd(floatList, width);
             width = 0.0f;
         }
     }
+}
 
-    *outListWidth = listWidth;
-    return countLine;
+float rmviCalcLargestLine(rmviFloatList *listWidth){
+    if(listWidth->count == 1) return listWidth->data[0];
+    if(listWidth->count <= 0 ) exit(0);
+    float res =listWidth->data[0];
+    for(int i=1; i< listWidth->count; i++){
+        if (listWidth->data[i] > res) res = listWidth->data[i]; 
+    }
+    return res;
 }
 
 int rmviCalcHeightLine(RenderBox *boxes, int boxCount, float **outListHeight){
@@ -1094,7 +1129,7 @@ float rmviCalcHeightTotal(RenderBox *boxes, int boxCount){
 }
 
 
-void rmviGetCustomFont(const char *path, float fontSize) {
+void rmviGetCustomFont(const char *path, float sizeText) {
     int codepoints[256];
     int count = 0;
     // ASCII imprimables (espace -> ~)
@@ -1159,6 +1194,7 @@ void rmviGetCustomFont(const char *path, float fontSize) {
     codepoints[count++] = 0x2265; // ≥
     codepoints[count++] = 0x221E; // ∞
     codepoints[count++] = 0x2260; // ≠
+    codepoints[count++] = 0x00D7; // ×
     // les lettres grecques majuscules
     codepoints[count++] = 0x0393; // Γ
     codepoints[count++] = 0x0394; // Δ
@@ -1170,7 +1206,7 @@ void rmviGetCustomFont(const char *path, float fontSize) {
     codepoints[count++] = 0x03A9; // Ω
     codepoints[count++] = 0x222B; // 
     // Chargement
-    mathFont = LoadFontEx(path, fontSize, codepoints, count);
+    mathFont = LoadFontEx(path, sizeText, codepoints, count);
 }
 
 // helpers UTF-8
@@ -1199,19 +1235,60 @@ static int copy_utf8_char(char *dst, const char *src) {
 
 
 void rmviWriteLatexLeftCenteredClassic(const char *latex, Vector2 *position) {
-    rmviWriteLatexLeftCentered(latex, position, SIZE_TEXT, SIZE_SPACING, WHITE, mathFont);
+    State state = rmviGetStateClassic();
+    rmviWriteLatexLeftCentered(latex, position, &state);
 }
 // on va centrée en x mais pas en y
-void rmviWriteLatexLeftCentered(const char *latex, Vector2 *position, float sizeText, float spacing, Color color, Font font) {
-    exit(EXIT_FAILURE);
-}
-// Dessine le text comme si on ecrivait en latex mais il faut remplacer les backslash par /
-void rmviWriteLatex(const char *latex, Vector2 *position, float sizeText, float spacing, Color color, Font font) {
+void rmviWriteLatexLeftCentered(const char *latex, Vector2 *position, State *state){
     Token tokens[512];
     int tokenCount = rmviTokenizeLatex(latex,tokens, 512);
     RenderBox boxes[256];
-    int boxCount = rmviBuildRenderBoxes(tokens, tokenCount, boxes, font, sizeText, spacing);
-    rmviDrawRenderBoxes(boxes, boxCount, *position, font, sizeText, spacing, color);
+    int boxCount = rmviBuildRenderBoxes(tokens, tokenCount, boxes,state);
+    rmviFloatList listWidth;
+    rmviCalcWidthLine(boxes,boxCount,&listWidth);
+    rmviDrawRenderBoxesCentered(&listWidth,state->sizeText*1.2*listWidth.count,boxes, boxCount, *position);
+    rmviFloatListFree(&listWidth);
+}
+// Dessine le text comme si on ecrivait en latex mais il faut remplacer les backslash par /
+void rmviWriteLatex(const char *latex, Vector2 *position, State *state){
+    Token tokens[512];
+    int tokenCount = rmviTokenizeLatex(latex,tokens, 512);
+    RenderBox boxes[256];
+    // ici à modifier pour mettre le bon ratio len test
+    int boxCount = rmviBuildRenderBoxes(tokens, tokenCount, boxes, state);
+    rmviDrawRenderBoxes(boxes, boxCount, *position);
+}
+void rmviWriteLatexClassic(const char *latex, Vector2 *position){
+    Token tokens[512];
+    int tokenCount = rmviTokenizeLatex(latex,tokens, 512);
+    RenderBox boxes[256];
+    // ici à modifier pour mettre le bon ratio len test
+    State state = rmviGetStateClassic();
+    int boxCount = rmviBuildRenderBoxes(tokens, tokenCount, boxes, &state);
+    rmviDrawRenderBoxes(boxes, boxCount, *position);
+}
+
+// renvoie la longeur d'une seule ligne
+float rmviCalcWidthLatexClassic(const char *latex){
+    Token tokens[512];
+    int tokenCount = rmviTokenizeLatex(latex,tokens, 512);
+    RenderBox boxes[256];
+    // ici à modifier pour mettre le bon ratio len test
+    State state = rmviGetStateClassic();
+    int boxCount = rmviBuildRenderBoxes(tokens, tokenCount, boxes, &state);
+    rmviFloatList outList;
+    rmviCalcWidthLine(boxes, boxCount,&outList);
+    return outList.data[0];
+}
+float rmviCalcWidthLatex(const char *latex,  State *state){
+    // ici on renvoie la longeur du premier, à modifier et mettre la plus grande non ?
+    Token tokens[512];
+    int tokenCount = rmviTokenizeLatex(latex,tokens, 512);
+    RenderBox boxes[256];
+    int boxCount = rmviBuildRenderBoxes(tokens, tokenCount, boxes, state);
+    rmviFloatList outList;
+    rmviCalcWidthLine(boxes, boxCount,&outList);
+    return outList.data[0];
 }
 
 int isBlankLine(const char *line){

@@ -20,21 +20,196 @@
 #define PRECISIONS 35 // Give more precision to the plot
 #define SIZETEXT 50.0f      // taille du text standar
 #define ARROWSIZE 20.0f     // gives the size arrow divided by ratio i think
-#define SPLIT_LEFT_ARROWS 0.2f // gives the left split for arrowsRect
+#define SPLIT_LEFT_ARROWS 0.5f // gives the left split for arrowsRect
 #define RATIOWRITEARROWS 0.5f
+#define TOKEN_SIZE 512 // place 512 tokens max pour commencer
+
+
+//---------------------------------- List INT -------------------------------------------------
+void rmviIntListInit(rmviIntList *list) {
+    if (!list) return;
+    list->data = NULL;
+    list->count = 0;
+    list->capacity = 0;
+}
+
+rmviIntList rmviGetIntList(int num){
+    rmviIntList intlist;
+    rmviIntListInit(&intlist);
+    if(num<0) return intlist;
+    rmviIntListAdd(&intlist,num);
+    return intlist;
+}
+
+
+void rmviIntListFree(rmviIntList *list) {
+    if (!list) return;
+    free(list->data);
+    list->data = NULL;
+    list->count = 0;
+    list->capacity = 0;
+}
+
+bool rmviIntListReserve(rmviIntList *list, int newCapacity) {
+    if (!list) return false;
+    if (newCapacity <= list->capacity) return true;
+
+    int *newData = realloc(list->data, sizeof(int) * newCapacity);
+    if (!newData) return false;
+
+    list->data = newData;
+    list->capacity = newCapacity;
+    return true;
+}
+
+bool rmviIntListAdd(rmviIntList *list, int value) {
+    if (!list) return false;
+
+    if (list->count >= list->capacity) {
+        int newCapacity = (list->capacity == 0) ? 4 : list->capacity * 2;
+        if (!rmviIntListReserve(list, newCapacity)) return false;
+    }
+
+    list->data[list->count] = value;
+    list->count++;
+    return true;
+}
+
+bool rmviIntListContains(const rmviIntList *list, int value) {
+    if (!list) return false;
+
+    for (int i = 0; i < list->count; i++) {
+        if (list->data[i] == value) return true;
+    }
+    return false;
+}
+
+// -------------------------------- renderList ---------------------
+
+
+void rmviRenderBoxListInit(rmviRenderBoxList *list) {
+    if (!list) return;
+    list->data = NULL;
+    list->count = 0;
+    list->capacity = 0;
+}
+
+rmviRenderBoxList rmviGetRenderBoxList(const char *latex, State *state){
+    // ici
+    rmviRenderBoxList RenderBoxlist;
+    rmviRenderBoxListInit(&RenderBoxlist);
+    Token tokens[512];
+    int tokenCount = rmviTokenizeLatex(latex,tokens, 512);
+    rmviRenderBoxListReserve(&RenderBoxlist,256);
+    RenderBoxlist.count = rmviBuildRenderBoxes(tokens, tokenCount, RenderBoxlist.data, state);
+    return RenderBoxlist;
+}
+
+void rmviRenderBoxListFree(rmviRenderBoxList *list) {
+    if (!list) return;
+    free(list->data);
+    list->data = NULL;
+    list->count = 0;
+    list->capacity = 0;
+}
+
+bool rmviRenderBoxListReserve(rmviRenderBoxList *list, int newCapacity) {
+    if (!list) return false;
+    if (newCapacity <= list->capacity) return true;
+    RenderBox *newData = realloc(list->data, sizeof(RenderBox) * newCapacity);
+    if (!newData) return false;
+    list->data = newData;
+    list->capacity = newCapacity;
+    return true;
+}
+/*
+bool rmviRenderBoxListAdd(rmviRenderBoxList *list, RenderBox *box) {
+    if (!list) return false;
+    if (list->count >= list->capacity) {
+        int newCapacity = (list->capacity == 0) ? 4 : list->capacity * 2;
+        if (!rmviRenderBoxListReserve(list, newCapacity)) return false;
+    }
+    list->data[list->count] = box;
+    list->count++;
+    return true;
+}
+*/
+
+// -------------------------------- Float List -------------------------------------------
+
+void rmviFloatListInit(rmviFloatList *list) {
+    if (!list) return;
+    list->data = NULL;
+    list->count = 0;
+    list->capacity = 0;
+}
+
+rmviFloatList rmviGetFloatList(float num) {
+    rmviFloatList floatList;
+    rmviFloatListInit(&floatList);
+    rmviFloatListAdd(&floatList, num);
+    return floatList;
+}
+
+void rmviFloatListFree(rmviFloatList *list) {
+    if (!list) return;
+    free(list->data);
+    list->data = NULL;
+    list->count = 0;
+    list->capacity = 0;
+}
+
+bool rmviFloatListReserve(rmviFloatList *list, int newCapacity) {
+    if (!list) return false;
+    if (newCapacity <= list->capacity) return true;
+
+    float *newData = realloc(list->data, sizeof(float) * newCapacity);
+    if (!newData) return false;
+
+    list->data = newData;
+    list->capacity = newCapacity;
+    return true;
+}
+
+bool rmviFloatListAdd(rmviFloatList *list, float value) {
+    if (!list) return false;
+
+    if (list->count >= list->capacity) {
+        int newCapacity = (list->capacity == 0) ? 4 : list->capacity * 2;
+        if (!rmviFloatListReserve(list, newCapacity)) return false;
+    }
+
+    list->data[list->count] = value;
+    list->count++;
+    return true;
+}
+
+bool rmviFloatListContains(const rmviFloatList *list, float value) {
+    if (!list) return false;
+    for (int i = 0; i < list->count; i++) {
+        if (fabsf(list->data[i] - value) < 1e-6f) return true;
+    }
+    return false;
+}
 
 
 //---------------------------------- RECTANGLE AND FRAMES ---------------------------------
 void rmviMyDrawText(const char *text, Vector2 position, float size, Color color) {
     if (text == NULL || strlen(text) == 0) return;
-    rmviWriteLatex(text, &position, size, size / RATIO_SPACE, color, mathFont);
+    rmviWriteLatexClassic(text, &position);
 }
 
-void rmviDrawTextMid(const char *text, Rectangle rec, Color color, float ratio, Font font) {
-        rmviDrawTextRec(text, rec, color, ratio, 0.5f, 0.5f, font);
+void rmviDrawTextMid(const char *text, Rectangle rec, State *state) {
+    Vector2 position = {rec.x + rec.width/2.0f , rec.y + rec.height/2.0f}; 
+    rmviWriteLatexLeftCentered(text,&position,state); 
 }
-void rmviDrawTextRec(const char *text, Rectangle rec, Color color, float ratio,
-                     float ratioWidth, float ratioHeight, Font font) {
+
+void rmviDrawTextMidClassic(const char *text, Rectangle rec){
+    Vector2 position = {rec.x + rec.width/2.0f , rec.y + rec.height/2.0f}; 
+    rmviWriteLatexLeftCenteredClassic(text,&position); 
+}
+
+void rmviDrawTextRec(const char *text, Rectangle rec, float ratio, float ratioWidth, float ratioHeight, State *state){
     printf("Fct rmviDrawTextRec à implémenter");
     exit(EXIT_FAILURE);
 }
@@ -49,25 +224,30 @@ Rectangle rmviGetRectangleCenteredRatio(float x, float y, float ratio_x, float r
     return rec;
 }
 // Construct a frame with the given parameters
-rmviFrame rmviGetFrame(float posX, float posY, float width, float height, float lineThick, Color innerColor, Color outerColor, const char *text, Font font,float roundness) {
+rmviFrame rmviGetFrame(float posX, float posY, float width, float height, float lineThick, Color innerColor, Color outerColor, const char *text, State *state,float roundness) {
     rmviFrame frame;
     frame.outerRect = (Rectangle){ posX, posY, width, height };
     frame.innerRect = (Rectangle){ posX + lineThick, posY + lineThick, width - 2 * lineThick, height - 2 * lineThick };
     frame.outerColor = outerColor;
     frame.innerColor = innerColor;
-    frame.text = text;
-    frame.font = font;
+    frame.state = state;
     frame.lineThick = lineThick;
     frame.roundness = roundness;  // Default roundness
+    rmviRenderBoxListInit(&frame.renderList);
+    //ici
+    Token tokens[TOKEN_SIZE];
+    int tokenCount = rmviTokenizeLatex(text,tokens,TOKEN_SIZE);
+    if(!rmviRenderBoxListReserve(&frame.renderList,tokenCount)) exit(0);
+    frame.renderList.count =  rmviBuildRenderBoxes(tokens,tokenCount,frame.renderList.data,frame.state); 
     return frame;
 }
 // Construct a round frame with the given parameters
-rmviFrame rmviGetRoundFrame(float posX, float posY, float radius, float lineThick, Color innerColor, Color outerColor, const char *text, Font font) {
-    rmviFrame frame = rmviGetFrame(posX, posY, radius * 2, radius * 2, lineThick, innerColor, outerColor, text, font, 1.0f);
+rmviFrame rmviGetRoundFrame(float posX, float posY, float radius, float lineThick, Color innerColor, Color outerColor, const char *text, State *state) {
+    rmviFrame frame = rmviGetFrame(posX, posY, radius * 2, radius * 2, lineThick, innerColor, outerColor, text, state, 1.0f);
     return frame;
 }
 
-rmviFrame rmviGetRoundFrameBGCentered(float posX, float posY, float ratio, float lineThick, const char *text, Font font){
+rmviFrame rmviGetRoundFrameBGCentered(float posX, float posY, float ratio, float lineThick, const char *text, State *state){
     float radius = (float)GetScreenWidth() / ratio;
     Rectangle rec = {
         posX - radius,
@@ -75,27 +255,53 @@ rmviFrame rmviGetRoundFrameBGCentered(float posX, float posY, float ratio, float
         radius * 2,
         radius * 2
     };
-    rmviFrame frame = rmviGetFrame(rec.x, rec.y, rec.width, rec.height, lineThick, BG, DRAWCOLOR, text, font, 1.0f);
+    rmviFrame frame = rmviGetFrame(rec.x, rec.y, rec.width, rec.height, lineThick, BG, DRAWCOLOR, text, state, 1.0f);
     return frame;
 }
 
 // Construct a frame with the given parameters, with a background color
-rmviFrame rmviGetFrameBG(float posX, float posY, float width, float height, float lineThick, const char *text, Font font) {
-    rmviFrame frame = rmviGetFrame(posX, posY, width, height, lineThick, BG, DRAWCOLOR, text, font, 0.0f);
+rmviFrame rmviGetFrameBG(float posX, float posY, float width, float height, float lineThick, const char *text, State *state) {
+    rmviFrame frame = rmviGetFrame(posX, posY, width, height, lineThick, BG, DRAWCOLOR, text, state, 0.0f);
     return frame;
 }
 // Construct a frame centered about x, y with a width and height based on the ratio and with the draw and background color
-rmviFrame rmviGetFrameBGCentered(float posX, float posY, float ratio_x, float ratio_y, float lineThick, const char *text, Font font) {
+rmviFrame rmviGetFrameBGCentered(float posX, float posY, float ratio_x, float ratio_y, float lineThick, const char *text, State *state) {
     Rectangle rec = rmviGetRectangleCenteredRatio(posX, posY, ratio_x, ratio_y);
-    rmviFrame frame = rmviGetFrame(rec.x, rec.y, rec.width, rec.height, lineThick, BG, DRAWCOLOR, text, font, 0.0f);
+    rmviFrame frame = rmviGetFrame(rec.x, rec.y, rec.width, rec.height, lineThick, BG, DRAWCOLOR, text,state, 0.0f);
     return frame;
 }
+rmviFrame rmviGetFrameFromText(float posX, float posY, const char *text, State *state){
+    rmviFrame frame = {0};
+    frame.state = state;
+    rmviRewriteFrame(&frame,text);
+    rmviFloatList widthline;
+    rmviCalcWidthLine(frame.renderList.data,frame.renderList.count,&widthline);
+    float lineMax = rmviCalcLargestLine(&widthline);
+    float width = max(lineMax+ 2*frame.state->sizeText, 3*frame.state->sizeText);
+    float height=  max(rmviCalcHeightTotal(frame.renderList.data,frame.renderList.count)+ 2*frame.state->sizeText, 3.5*frame.state->sizeText);
+    frame.outerRect = (Rectangle){ posX-width/2.0f, posY-height/2, width, height };
+    frame.innerRect = (Rectangle){ posX-width/2.0f + state->spacing, posY-height/2 + state->spacing, width - 2 * state->spacing, height - 2 * state->spacing };
+    frame.outerColor = DRAWCOLOR;
+    frame.innerColor = BG;
+    
+    frame.lineThick = state->spacing;
+    return frame;
+}
+
 // Draw a frame
-void rmviDrawFrame(rmviFrame frame, float ratio) {
-    DrawRectangleRounded(frame.outerRect, frame.roundness, PRECISIONS, frame.outerColor);
-    DrawRectangleRounded(frame.innerRect, frame.roundness, PRECISIONS, frame.innerColor);
-    if (frame.text != NULL) {
-        rmviDrawTextMid(frame.text, frame.innerRect, frame.outerColor, ratio, mathFont);
+void rmviDrawFrame(const rmviFrame *frame) {
+    DrawRectangleRounded(frame->outerRect, frame->roundness, PRECISIONS, frame->outerColor);
+    DrawRectangleRounded(frame->innerRect, frame->roundness, PRECISIONS, frame->innerColor);
+    float height = rmviCalcHeightTotal(frame->renderList.data,frame->renderList.count);
+    rmviFloatList listWidth;
+    rmviCalcWidthLine(frame->renderList.data,frame->renderList.count,&listWidth);
+    Vector2 drawPos = {frame->outerRect.x + frame->outerRect.width/2 ,
+                    frame->outerRect.y + frame->outerRect.height/2};
+    /*Vector2 drawPos = {frame->outerRect.x + frame->outerRect.width/2 - listWidth[0]/2,
+                    frame->outerRect.y + frame->outerRect.height/2 - height/2};*/
+    if (frame->renderList.count > 0){
+        rmviDrawRenderBoxesCentered(&listWidth,height,frame->renderList.data,frame->renderList.count,drawPos);
+        //rmviDrawRenderBoxes(frame->renderList.data,frame->renderList.count,drawPos);
     }
 }
 
@@ -103,7 +309,10 @@ void rmviDrawFrame(rmviFrame frame, float ratio) {
 void rmviDrawFramePro(rmviFrame frame, float ratio, float rotation, Vector2 origin, Vector2 translation){
     rmviRotateRectangle(frame.outerRect, origin, rotation, frame.outerColor);
     rmviRotateRectangle(frame.innerRect, origin, rotation, frame.innerColor);
-    if (frame.text != NULL) {
+    if (frame.renderList.count>0) {
+        printf("fonction rmviDrawFramePro à réécrire");
+        exit(0);
+        /*
         float nLines = 1;
         for (int i = 0; i < strlen(frame.text); i++) {
             if (frame.text[i] == '\n') nLines++;
@@ -117,20 +326,21 @@ void rmviDrawFramePro(rmviFrame frame, float ratio, float rotation, Vector2 orig
                 frame.innerRect.x + frame.innerRect.width / 2.0f - MeasureText(frame.text, sizeText)/2.0f,
                 frame.innerRect.y + frame.innerRect.height / 2.0f - nLines* sizeText / 2.0f
             },
-            translationVector, - rotation, frame.innerRect.height / ratio, frame.outerColor, frame.font);
+            translationVector, - rotation, &frame.state);
+            */
     }
 
 }
 
 // Update parameters frames
-void rmviUpdateFrame(rmviFrame *frame, float posX, float posY, float width, float height, float lineThick, Color innerColor, Color outerColor, const char *text, Font font) {
+void rmviUpdateFrame(rmviFrame *frame, float posX, float posY, float width, float height, float lineThick, Color innerColor, Color outerColor, State *state) {
     frame->outerRect = (Rectangle){ posX, posY, width, height };
     frame->innerRect = (Rectangle){ posX + lineThick, posY + lineThick, width - 2 * lineThick, height - 2 * lineThick };
     frame->outerColor = outerColor;
     frame->innerColor = innerColor;
-    frame->text = text;
-    frame->font = font;
+    frame->state = state;
     frame->lineThick = lineThick;
+
 }
 
 // Update a frame's zoom
@@ -138,20 +348,19 @@ void rmviZoomFrame(rmviFrame *frame, float zoomFactor) {
     float hypothenuse = sqrtf(frame->outerRect.width * frame->outerRect.width + frame->outerRect.height * frame->outerRect.height);
     float rateX = frame->outerRect.width / hypothenuse;
     float rateY = frame->outerRect.height / hypothenuse;
-    rmviUpdateFrame(frame, 
-        frame->outerRect.x - (zoomFactor * rateX)/2.0f, 
-        frame->outerRect.y - (zoomFactor * rateY)/2.0f, 
-        frame->outerRect.width + (zoomFactor * rateX), 
-        frame->outerRect.height + (zoomFactor * rateY), 
-        frame->lineThick , //+ (rate* frame->lineThick/hypothenuse)
-        frame->innerColor, 
-        frame->outerColor, 
-        frame->text,
-        frame->font);
+    frame->outerRect.x -= (zoomFactor * rateX)/2.0f;
+    frame->outerRect.y -= (zoomFactor * rateY)/2.0f;
 }
 
-void rmviRewriteFrame(rmviFrame *frame,const char *text) {
-    rmviUpdateFrame(frame, frame->outerRect.x, frame->outerRect.y, frame->outerRect.width, frame->outerRect.height, frame->lineThick, frame->innerColor, frame->outerColor, text, frame->font);
+void rmviRewriteFrame(rmviFrame *frame, const char *text) {
+    rmviRenderBoxListInit(&frame->renderList);
+    Token tokens[TOKEN_SIZE];
+    int tokenCount = rmviTokenizeLatex(text, tokens, TOKEN_SIZE);
+    if (!rmviRenderBoxListReserve(&frame->renderList, tokenCount)) {
+        printf("rewrite frame has bugged");
+        exit(0);
+    }
+    frame->renderList.count = rmviBuildRenderBoxes( tokens,tokenCount,frame->renderList.data,frame->state);
 }
 
 // fait tourner un rectangle autour du point origin. 0,0 est le centre du rectangle
@@ -315,55 +524,131 @@ void rmviDrawArrowRect2(Vector2 start, Vector2 end, float arrowSize, float  rati
 // --------------------------------------------- Text and Font ---------------------------------------------
 
 // rotate text around a the center of the text
-void rmviRotateText(const char *text, Vector2 position, Vector2 origin, float rotation, float sizeText, Color color, Font font){
+void rmviRotateText(const char *text, Vector2 position, Vector2 origin, float rotation, State *state){
     rlPushMatrix();
         rlTranslatef(position.x  + origin.x, position.y  + origin.y, 0.0f);
         rlRotatef(rotation, 0.0f, 0.0f, 1.0f);
         rlTranslatef(-origin.x, -origin.y, 0.0f);
         Vector2 pos = {0, 0};
-        rmviWriteLatex(text, &pos, sizeText, sizeText / RATIO_SPACE, color, font);
+        rmviWriteLatex(text, &pos, state);
     rlPopMatrix();
 }
 
 // Create a carthesian system with an origin, the size is the half long and unit place the size
 rmviCarthesian rmviGetCarthesian(Vector2 origin, Vector2 size, Vector2 unit) {
-    rmviCarthesian carthesian;
+    rmviCarthesian carthesian = {0};
     carthesian.origin = origin;
     carthesian.size = size;
     carthesian.unit = unit;
+    carthesian.sizeUnit = (Vector2) {50,50};
+    carthesian.thikness = 3;
+    carthesian.sizeText = 40;
+    carthesian.spacing = 2;
     return carthesian;
 }
+void rmviSetCarthesianAxesLabel(rmviCarthesian *carthesian,const char *xlabel,const char* ylabel){
+    snprintf(carthesian->xlabel, sizeof(carthesian->xlabel), "%s",xlabel);
+    snprintf(carthesian->ylabel, sizeof(carthesian->ylabel), "%s",ylabel);
+}
+void rmviSetCarthesianTitle(rmviCarthesian *carthesian,const char *title){
+    snprintf(carthesian->title, sizeof(carthesian->title), "%s",title);
+}
+rmviLegend rmviGetLegend(int capacity){
+    rmviLegend legend = {0};
+    legend.color = malloc(sizeof(Color) * capacity);
+    legend.name = malloc(sizeof(char*) * capacity);
+    legend.count = 0;
+    legend.capacity = capacity;
+    legend.sizeText = 30;
+    return legend;
+}
 
+void rmviAddLegend(rmviLegend *legend, Color color, const char *name){
+    if (legend->count >= legend->capacity) return; // ici réalloué
+    int i = legend->count;
+    legend->color[i] = color;
+    legend->name[i] = malloc(strlen(name) + 1);
+    strcpy(legend->name[i], name);
+    legend->count++;
+}
+
+void rmviDrawLegend(rmviCarthesian carthesian, rmviLegend *legend){
+    Vector2 position = Vector2Subtract(carthesian.origin,Vector2Scale(carthesian.size,1));
+    State state = rmviGetState(legend->sizeText,legend->sizeText/20,1.2f,carthesian.size.x,true,0,mathFont,WHITE);
+    for(int i =0; i< legend->count; i++){
+        DrawCircleV(Vector2Add(position,(Vector2){-legend->sizeText/2,legend->sizeText/2}), legend->sizeText/4,legend->color[i]);
+        rmviWriteLatex(legend->name[i],&position,&state);
+        position.y += legend->sizeText*1.2;
+    }
+}
+char *numberToScientific(float nombre){
+    static char text[32];
+    if (nombre == 0.0f){
+        snprintf(text, sizeof(text), "0");
+        return text;
+    }
+    float absNombre = fabsf(nombre);
+    int exposant = (int)floorf(log10f(absNombre));
+    if (exposant > 3 || exposant < 0){
+        float mantisse = nombre / powf(10.0f, (float)exposant);
+        if (mantisse == 1.0f) snprintf(text, sizeof(text), "10^{%d}", exposant);
+        else snprintf(text, sizeof(text), "%.1f/cross 10^{%d}", mantisse, exposant);
+    }
+    else{
+        if (fabsf(nombre - roundf(nombre)) < 1e-6f)
+            snprintf(text, sizeof(text), "%.0f", nombre);
+        else
+            snprintf(text, sizeof(text), "%.2f", nombre);
+    }
+    return text;
+}
 // Draw the ticks on the carthesian system, length is the length of the ticks; log coordinate system to add
-void rmviDrawTick(rmviCarthesian carthesian, float length, Color color) {
-    int nbMax = floorf(max(carthesian.size.x / carthesian.unit.x, carthesian.size.y / carthesian.unit.y));
+void rmviDrawTick(rmviCarthesian carthesian, float length, float thikness, Color color) {
+    int nbMax = floorf(max(carthesian.size.x / carthesian.sizeUnit.x, carthesian.size.y / carthesian.sizeUnit.y));
+    State state = rmviGetStateClassic();
+    state.sizeText = min(carthesian.sizeText,carthesian.sizeUnit.x/2);
+    state.spacing = state.sizeText/20;
     for (int i = - nbMax + 1 ; i < nbMax; i ++) {
-        if (abs(i) < floorf(carthesian.size.x / carthesian.unit.x)) {
-            Vector2 positionThickX = (Vector2) { carthesian.origin.x + i * carthesian.unit.x, carthesian.origin.y};
+        if (abs(i) < floorf(carthesian.size.x / carthesian.sizeUnit.x)) {
+            Vector2 positionThickX = (Vector2) { carthesian.origin.x + i * carthesian.sizeUnit.x, carthesian.origin.y};
             Vector2 lengthY = (Vector2) {0 , length/2};
-            DrawLineV(Vector2Add(positionThickX, lengthY) , Vector2Subtract(positionThickX, lengthY), color);
+            DrawLineEx(Vector2Add(positionThickX, lengthY) , Vector2Subtract(positionThickX, lengthY),thikness,color);
+            if(i == 1){
+                char *buffer = numberToScientific(carthesian.unit.x);
+                positionThickX.y += state.sizeText/2.0f;
+                positionThickX.x -= MeasureText(buffer,state.sizeText)/2;
+                rmviWriteLatex(buffer, &positionThickX,&state);
+                //free(buffer);
+            }
         }
-        if (abs(i) < floorf(carthesian.size.y / carthesian.unit.y)){
+        if (abs(i) < floorf(carthesian.size.y / carthesian.sizeUnit.y)){
             // Draw horizontal lines
-            Vector2 positionThickY = (Vector2) { carthesian.origin.x, carthesian.origin.y + i * carthesian.unit.y};
+            Vector2 positionThickY = (Vector2) { carthesian.origin.x, carthesian.origin.y + i * carthesian.sizeUnit.y};
             Vector2 lengthX = (Vector2) {length/2 , 0};
-            DrawLineV(Vector2Add(positionThickY, lengthX) , Vector2Subtract(positionThickY, lengthX), color);
+            DrawLineEx(Vector2Add(positionThickY, lengthX) , Vector2Subtract(positionThickY, lengthX), thikness,color);
+            if(i == -1){
+                char *buffer = numberToScientific(carthesian.unit.y);
+                positionThickY.y -= state.sizeText/2;
+                positionThickY.x -= rmviCalcWidthLatex(buffer, &state) + state.sizeText/5 ;
+                rmviWriteLatex(buffer, &positionThickY,&state);
+                //free(buffer);
+            }
         }
     }
 }
 
 // Draw the grids on the carthesian system, should be modified for the thickness
 void rmviDrawGrids(rmviCarthesian carthesian, Color color){
-    int nbMax = floorf(max(carthesian.size.x / carthesian.unit.x, carthesian.size.y / carthesian.unit.y));
+    int nbMax = floorf(max(carthesian.size.x / carthesian.sizeUnit.x, carthesian.size.y / carthesian.sizeUnit.y));
     for (int i = - nbMax + 1 ; i < nbMax; i ++) {
-        if (abs(i) < floorf(carthesian.size.x / carthesian.unit.x)) {
-            Vector2 positionThickX = (Vector2) { carthesian.origin.x + i * carthesian.unit.x, carthesian.origin.y};
+        if (abs(i) < floorf(carthesian.size.x / carthesian.sizeUnit.x)) {
+            Vector2 positionThickX = (Vector2) { carthesian.origin.x + i * carthesian.sizeUnit.x, carthesian.origin.y};
             Vector2 lengthY = (Vector2) {0 , carthesian.size.y};
             DrawLineV(Vector2Add(positionThickX, lengthY) , Vector2Subtract(positionThickX, lengthY), color);
         }
-        if (abs(i) < floorf(carthesian.size.y / carthesian.unit.y)){
+        if (abs(i) < floorf(carthesian.size.y / carthesian.sizeUnit.y)){
             // Draw horizontal lines
-            Vector2 positionThickY = (Vector2) { carthesian.origin.x, carthesian.origin.y + i * carthesian.unit.y};
+            Vector2 positionThickY = (Vector2) { carthesian.origin.x, carthesian.origin.y + i * carthesian.sizeUnit.y};
             Vector2 lengthX = (Vector2) {carthesian.size.x , 0};
             DrawLineV(Vector2Add(positionThickY, lengthX) , Vector2Subtract(positionThickY, lengthX), color);
         }
@@ -371,6 +656,9 @@ void rmviDrawGrids(rmviCarthesian carthesian, Color color){
 }
 
 // Draw the carthesian system
+void rmviWriteAxisClassic(rmviCarthesian carthesian){
+    rmviWriteAxis(carthesian,carthesian.sizeText,carthesian.spacing,mathFont,WHITE);
+}
 void rmviDrawCarthesianFull(rmviCarthesian carthesian, float arrowSize, float ratio, Color color,bool drawTicks, bool drawGrids) {
     rmviDrawArrow2(
         (Vector2){ carthesian.origin.x - carthesian.size.x, carthesian.origin.y },
@@ -381,8 +669,44 @@ void rmviDrawCarthesianFull(rmviCarthesian carthesian, float arrowSize, float ra
         (Vector2){ carthesian.origin.x, carthesian.origin.y - carthesian.size.y },
         arrowSize, ratio, color);
     if (drawGrids) rmviDrawGrids(carthesian, color);
-    if (drawTicks) rmviDrawTick(carthesian, arrowSize / 2, color);
+    if (drawTicks) rmviDrawTick(carthesian, arrowSize/2,2.0f, color);
+    if (carthesian.title) rmviWriteTitleClassic(carthesian);
+    rmviWriteAxisClassic(carthesian);
 }
+
+void rmviWriteAxis(rmviCarthesian carthesian,float sizeText, float spacing,Font font,Color color){
+    State state = rmviGetState(sizeText,spacing,1.2f,1.5f*carthesian.size.x,true,0,font,color);
+    Token tokensX[512];
+    int tokenCountX = rmviTokenizeLatex(carthesian.xlabel,tokensX, 512);
+    RenderBox boxesX[256];
+    int boxCountX = rmviBuildRenderBoxes(tokensX, tokenCountX, boxesX, &state);
+    Vector2 positionX = Vector2Add(carthesian.origin,
+        (Vector2) {carthesian.size.x*0.8, sizeText});
+    rmviDrawRenderBoxes(boxesX,boxCountX,positionX);
+    Token tokensY[512];
+    int tokenCountY = rmviTokenizeLatex(carthesian.ylabel,tokensY, 512);
+    RenderBox boxesY[256];
+    int boxCountY = rmviBuildRenderBoxes(tokensY, tokenCountY, boxesY, &state);
+    Vector2 positionY = Vector2Add(carthesian.origin,
+        (Vector2) {-1.2*rmviCalcWidthLatex(carthesian.ylabel,&state), - carthesian.size.y*0.8});
+    rmviDrawRenderBoxes(boxesY,boxCountY,positionY);
+}
+void rmviWriteTitle(rmviCarthesian carthesian,float sizeText, float spacing,Font font,Color color){
+    Token tokens[512];
+    int tokenCount = rmviTokenizeLatex(carthesian.title,tokens, 512);
+    RenderBox boxes[256];
+    State state = rmviGetState(sizeText,spacing,1.2f,1.5f*carthesian.size.x,true,0,font,color);
+    int boxCount = rmviBuildRenderBoxes(tokens, tokenCount, boxes, &state);
+    rmviFloatList listWidth;
+    rmviCalcWidthLine(boxes,boxCount,&listWidth);
+    Vector2 position = Vector2Add(carthesian.origin, (Vector2) {0,- carthesian.size.y - sizeText - (listWidth.count-1)*(sizeText*1.2)});
+    rmviDrawRenderBoxesCentered(&listWidth,sizeText*1.2* listWidth.count,boxes, boxCount, position);
+    rmviFloatListFree(&listWidth);
+}
+void rmviWriteTitleClassic(rmviCarthesian carthesian){
+    rmviWriteTitle(carthesian,carthesian.sizeText,carthesian.spacing,mathFont,WHITE);
+}
+
 // Update the carthesian system
 void rmviUpdateCarthesian(rmviCarthesian *carthesian, Vector2 origin, Vector2 unit , Vector2 size) {
     carthesian->origin = origin;
@@ -421,6 +745,50 @@ void rmviDrawFunction(rmviCarthesian carthesian, MathFunction fct, Color color) 
         }
     }
 }
+// listX/listY : valeurs en "unités" (pas en pixels)
+// count       : nb de points valides
+// line        : si true => relie les points, sinon dessine juste des points
+void rmviDrawList2(rmviCarthesian carthesian, const float *listX, const float *listY, int count, bool line, Color color){
+    if (!listX || !listY || count <= 0) return;
+    // bornes visibles en unités (comme dans ton code)
+    float xRange = carthesian.size.x*carthesian.unit.x / carthesian.sizeUnit.x; // demi-largeur en unités
+    float yRange = carthesian.size.y*carthesian.unit.y / carthesian.sizeUnit.y; // demi-hauteur en unités
+    Vector2 pPrev = {0};
+    bool hasPrev = false;
+    for (int i = 0; i < count; i++){
+        float x = listX[i];
+        float y = listY[i];
+        // Optionnel : skip si hors champ (tu peux aussi choisir de "clipper")
+        if (fabsf(x) > xRange || fabsf(y) > yRange) {
+            hasPrev = false; // casse la ligne si on sort du cadre
+            continue;
+        }
+
+        Vector2 p = (Vector2){
+            carthesian.origin.x + x* carthesian.sizeUnit.x/ carthesian.unit.x,
+            carthesian.origin.y - y* carthesian.sizeUnit.x/ carthesian.unit.y
+        };
+        if (line){
+            if (hasPrev) DrawLineEx(pPrev, p, carthesian.thikness, color);
+            pPrev = p;
+            hasPrev = true;
+        }
+        else{
+            // Points "visibles" : DrawPixelV si tu veux 1px,
+            // ou DrawCircleV pour un point plus lisible
+            DrawPixelV(p, color);
+            // DrawCircleV(p, 2.0f, color);
+        }
+    }
+}
+
+void rmviLegendFree(rmviLegend *legend){
+    for(int i = 0; i < legend->count; i++)
+        free(legend->name[i]);
+    free(legend->name);
+    free(legend->color);
+}
+
 // circles axes projections
 float circleX(float t, float radius) {
     return radius * cosf(t);
@@ -506,7 +874,6 @@ int getDepth(rmviTree *tree, int index) {
 rmviTree *rmviAddFrame2Tree(rmviTree *tree, rmviFrame *frame, int parentIndex) {
     if (tree == NULL) return NULL;
     int newIndex = tree->n; // futur index du nouveau frame
-
     // Agrandir le tableau de pointeur des frames
     rmviFrame **newFrames = realloc(tree->frames, sizeof(rmviFrame*) * (tree->n + 1));
     if (newFrames == NULL) return NULL;
@@ -576,8 +943,7 @@ void rmviPositioningTree(rmviTree *tree,float spaceTreeRatioX, float spaceTreeRa
             rmviUpdateFrame(childFrame, parentFrame->outerRect.x + parentFrame->outerRect.width*spaceTreeRatioX,
                             parentFrame->outerRect.y + parentFrame->outerRect.height * spaceTreeRatioY * offset,
                             childFrame->outerRect.width, childFrame->outerRect.height,
-                            childFrame->lineThick, childFrame->innerColor, childFrame->outerColor,
-                            childFrame->text, childFrame->font);
+                            childFrame->lineThick, childFrame->innerColor, childFrame->outerColor, childFrame->state);
             
         }
     }
@@ -599,8 +965,8 @@ void rmviDrawTree(rmviTree *tree, int arrows) {
     for (int i = 0; i < tree->n; i++) {
         rmviFrame *frame = tree->frames[i];
         // Dessiner le cadre ici
-        rmviDrawFrame(*frame, RATIODEFAULT);
-        if(arrows ==1) {
+        rmviDrawFrame(frame);
+        if(arrows == ARROWDIRECT) {
             int nChildren = tree->nEnfants[i];
             for (int j = 0; j < nChildren; j++) {
                 int childIndex = tree->enfants[i][j];
@@ -610,9 +976,254 @@ void rmviDrawTree(rmviTree *tree, int arrows) {
                 rmviDrawArrow2(start, end, ARROWSIZE, RATIODEFAULT, DRAWCOLOR);
             }
         }
-        else if( arrows == 2) rmviDrawTreeSquareWrite(tree, SPLIT_LEFT_ARROWS, NULL, DRAWCOLOR, RATIOWRITEARROWS, SIZETEXT);
+        else if( arrows == ARROWSQUARE) rmviDrawTreeSquareWrite(tree, SPLIT_LEFT_ARROWS, NULL, DRAWCOLOR, RATIOWRITEARROWS, SIZETEXT);
+        else rmviDrawTreeSquareWrite(tree, SPLIT_LEFT_ARROWS, NULL, DRAWCOLOR, RATIOWRITEARROWS, SIZETEXT);
     }
 }
+
+rmviGraph *rmviGetGraph(void){
+    rmviGraph *graph = malloc(sizeof(rmviGraph));
+    if(graph == NULL) return NULL;
+    graph->n = 0;
+    graph->depth = 0;
+    graph->frames = NULL;
+    graph->numeros = NULL;
+    graph->parents = NULL;
+    graph->enfants = NULL;
+    return graph;
+}
+// suppose pas de cycle
+int rmviGetDepth(const rmviGraph *graph, int index){
+    if(graph == NULL) return 0;
+    if(index < 0 || index >= graph->n) return 0;
+    if(graph->parents[index].count == 0) return 1;
+    int maxDepth = 0;
+    for(int i = 0; i < graph->parents[index].count; i++){
+        int parentIndex = graph->parents[index].data[i];
+        int parentDepth = rmviGetDepth(graph, parentIndex);
+        if(parentDepth > maxDepth) maxDepth = parentDepth;
+    }
+    return maxDepth + 1;
+}
+
+// ajoute un lien parent enfant
+bool rmviAddEdge2Graph(rmviGraph *graph, int parentIndex, int childIndex){
+    if(graph == NULL) return false;
+    if(parentIndex < 0 || parentIndex >= graph->n) return false;
+    if(childIndex < 0 || childIndex >= graph->n) return false;
+    if(parentIndex == childIndex) return false;
+    if(!rmviIntListContains(&graph->enfants[parentIndex], childIndex)){
+        if(!rmviIntListAdd(&graph->enfants[parentIndex], childIndex)) return false;
+    }
+    if(!rmviIntListContains(&graph->parents[childIndex], parentIndex)){
+        if(!rmviIntListAdd(&graph->parents[childIndex], parentIndex)) return false;
+    }
+    return true;
+}
+
+void rmviAddFrame2Graph(rmviGraph *graph, rmviFrame *frame, const rmviIntList *parents){
+    if(graph == NULL || frame == NULL) return;
+
+    int newIndex = graph->n;
+
+    rmviFrame **newFrames = realloc(graph->frames, sizeof(rmviFrame *) * (graph->n + 1));
+    if(newFrames == NULL) return;
+    graph->frames = newFrames;
+
+    int *newNumeros = realloc(graph->numeros, sizeof(int) * (graph->n + 1));
+    if(newNumeros == NULL) return;
+    graph->numeros = newNumeros;
+
+    rmviIntList *newParents = realloc(graph->parents, sizeof(rmviIntList) * (graph->n + 1));
+    if(newParents == NULL) return;
+    graph->parents = newParents;
+
+    rmviIntList *newEnfants = realloc(graph->enfants, sizeof(rmviIntList) * (graph->n + 1));
+    if(newEnfants == NULL) return;
+    graph->enfants = newEnfants;
+
+    graph->frames[newIndex] = frame;
+    graph->numeros[newIndex] = newIndex;
+    rmviIntListInit(&graph->parents[newIndex]);
+    rmviIntListInit(&graph->enfants[newIndex]);
+
+    frame->num = newIndex;
+    graph->n++;
+
+    if(parents != NULL){
+        for(int i = 0; i < parents->count; i++){
+            int parentIndex = parents->data[i];
+            if(parentIndex < 0 || parentIndex >= newIndex) continue;
+            rmviAddEdge2Graph(graph, parentIndex, newIndex);
+        }
+    }
+
+    int newDepth = rmviGetDepth(graph, newIndex);
+    if(newDepth > graph->depth) graph->depth = newDepth;
+    if(graph->depth == 0) graph->depth = 1;
+}
+
+void rmviAddFrame2GraphSingleParent(rmviGraph *graph, rmviFrame *frame, int parentIndex){
+    rmviIntList intList; 
+    rmviIntListInit(&intList);
+    rmviIntListAdd(&intList,parentIndex);
+    rmviAddFrame2Graph(graph, frame, &intList);
+}
+
+void rmviPositioningGraph(rmviGraph *graph, float spaceTreeRatioX, float spaceTreeRatioY){
+    if(graph == NULL) return;
+    for(int i = 0; i < graph->n; i++) {
+        // Si plusieurs parents, on place le noeud à la moyenne des positions des parents
+        if(graph->parents[i].count > 1){
+            float avgX = 0.0f;
+            float avgY = 0.0f;
+            for(int j = 0; j < graph->parents[i].count; j++){
+                int parentIndex = graph->parents[i].data[j];
+                rmviFrame *parentFrame = graph->frames[parentIndex];
+                avgX += parentFrame->outerRect.x + parentFrame->outerRect.width;
+                avgY += parentFrame->outerRect.y + parentFrame->outerRect.height * 0.5f;
+            }
+            avgX  = avgX /(float)graph->parents[i].count + spaceTreeRatioX;
+            avgY  = avgY / (float)graph->parents[i].count + spaceTreeRatioY;
+            rmviFrame *frame = graph->frames[i];
+            frame->outerRect = (Rectangle){
+                avgX,
+                avgY - frame->outerRect.height * 0.5f,
+                frame->outerRect.width,
+                frame->outerRect.height
+            };
+
+            frame->innerRect = (Rectangle){
+                frame->outerRect.x + frame->lineThick,
+                frame->outerRect.y + frame->lineThick,
+                frame->outerRect.width - 2.0f * frame->lineThick,
+                frame->outerRect.height - 2.0f * frame->lineThick
+            };
+        }
+
+        int size = graph->enfants[i].count;
+
+        for(int j = 0; j < size; j++) {
+            int childIndex = graph->enfants[i].data[j];
+            rmviFrame *childFrame = graph->frames[childIndex];
+            rmviFrame *parentFrame = graph->frames[i];
+            float offset = (float)j - (float)(size - 1) / 2.0f;
+            rmviUpdateFrame(childFrame,
+                            parentFrame->outerRect.x + parentFrame->outerRect.width + spaceTreeRatioX,
+                            parentFrame->outerRect.y + parentFrame->outerRect.height * spaceTreeRatioY * offset,
+                            childFrame->outerRect.width,
+                            childFrame->outerRect.height,
+                            childFrame->lineThick,
+                            childFrame->innerColor,
+                            childFrame->outerColor,
+                            childFrame->state);
+        }
+    }
+}
+
+void rmviPositioningGraphAverageParents(rmviGraph *graph, float spaceTreeRatioX, float spaceTreeRatioY){
+    // on peut ajouter un paramettre pour bot ou top non ?
+    if(graph == NULL) return;
+    for(int i = 0; i < graph->n; i++){
+        rmviFrame *frame = graph->frames[i];
+        if(graph->parents[i].count == 0) continue;
+        float avgX = 0.0f;
+        float avgY = 0.0f;
+        for(int j = 0; j < graph->parents[i].count; j++){
+            int parentIndex = graph->parents[i].data[j];
+            rmviFrame *parentFrame = graph->frames[parentIndex];
+            avgX += parentFrame->outerRect.x + parentFrame->outerRect.width * spaceTreeRatioX;
+            avgY += parentFrame->outerRect.y + parentFrame->outerRect.height * 0.5f;
+        }
+        avgX /= (float)graph->parents[i].count;
+        avgY /= (float)graph->parents[i].count;
+        frame->outerRect = (Rectangle){ avgX, - frame->outerRect.height * 0.5f , frame->outerRect.width, frame->outerRect.height };
+        frame->innerRect = (Rectangle){ avgX + frame->lineThick, avgY + frame->lineThick, frame->outerRect.width - 2 * frame->lineThick, frame->outerRect.height - 2 * frame->lineThick };
+    }
+}
+
+void rmviZoomGraph(rmviGraph *graph, float zoomFactor){
+    if(graph == NULL) return;
+
+    for(int i = 0; i < graph->n; i++){
+        rmviZoomFrame(graph->frames[i], zoomFactor);
+    }
+}
+
+void rmviDrawGraph(rmviGraph *graph, int arrows){
+    if(graph == NULL) return;
+    for(int i = 0; i < graph->n; i++){
+        rmviFrame *frame = graph->frames[i];
+        rmviDrawFrame(frame);
+        if(arrows == ARROWDIRECT){
+            int nChildren = graph->enfants[i].count;
+            for(int j = 0; j < nChildren; j++){
+                int childIndex = graph->enfants[i].data[j];
+                rmviFrame *childFrame = graph->frames[childIndex];
+                Vector2 start = (Vector2){
+                    frame->outerRect.x + frame->outerRect.width,
+                    frame->outerRect.y + frame->outerRect.height / 2.0f
+                };
+                Vector2 end = (Vector2){
+                    childFrame->outerRect.x,
+                    childFrame->outerRect.y + childFrame->outerRect.height / 2.0f
+                };
+                rmviDrawArrow2(start, end, ARROWSIZE, RATIODEFAULT, DRAWCOLOR);
+            }
+        }
+    }
+    if(arrows == ARROWSQUARE){
+        rmviDrawGraphSquareWrite(graph, SPLIT_LEFT_ARROWS, NULL, DRAWCOLOR, RATIOWRITEARROWS, SIZETEXT);
+    }
+    else if(arrows != ARROWDIRECT){
+        rmviDrawGraphSquareWrite(graph, SPLIT_LEFT_ARROWS, NULL, DRAWCOLOR, RATIOWRITEARROWS, SIZETEXT);
+    }
+}
+
+void rmviDrawGraphSquareWrite(rmviGraph *graph, float leftRatio, const char **listText, Color color, float ratioWriteArrow, float size) {
+    if (graph == NULL) return;
+    int count = 0;
+
+    for (int i = 0; i < graph->n; i++) {
+        rmviFrame *frame = graph->frames[i];
+        rmviDrawFrame(frame);
+        int nChildren = graph->enfants[i].count;
+        for (int j = 0; j < nChildren; j++) {
+            int childIndex = graph->enfants[i].data[j];
+            rmviFrame *childFrame = graph->frames[childIndex];
+
+            Vector2 start = {
+                frame->outerRect.x + frame->outerRect.width,
+                frame->outerRect.y + frame->outerRect.height / 2.0f
+            };
+
+            Vector2 end = {
+                childFrame->outerRect.x,
+                childFrame->outerRect.y + childFrame->outerRect.height / 2.0f
+            };
+
+            rmviDrawArrowRect2(start, end, ARROWSIZE, RATIODEFAULT, leftRatio, color);
+        }
+
+        count += nChildren;
+    }
+}
+
+void rmviFreeGraph(rmviGraph *graph){
+    if(graph == NULL) return;
+
+    for(int i = 0; i < graph->n; i++){
+        rmviIntListFree(&graph->parents[i]);
+        rmviIntListFree(&graph->enfants[i]);
+    }
+
+    free(graph->frames);
+    free(graph->numeros);
+    free(graph->parents);
+    free(graph->enfants);
+    free(graph);
+}
+
 // Dessine l'arbre avec des flèches en angle droit et du texte sur les flèches
 // leftRatio : proportion de la flèche avant le virage
 void rmviDrawTreeSquareWrite(rmviTree *tree, float leftRatio, const char **listText, Color color, float ratioWriteArrow, float size) {
@@ -621,7 +1232,7 @@ void rmviDrawTreeSquareWrite(rmviTree *tree, float leftRatio, const char **listT
     for (int i = 0; i < tree->n; i++) {
         rmviFrame *frame = tree->frames[i];
         // Dessiner le cadre ici
-        rmviDrawFrame(*frame, RATIODEFAULT);
+        rmviDrawFrame(frame);
         int nChildren = tree->nEnfants[i];
         for (int j = 0; j < nChildren; j++) {
             int childIndex = tree->enfants[i][j];
@@ -630,33 +1241,31 @@ void rmviDrawTreeSquareWrite(rmviTree *tree, float leftRatio, const char **listT
             Vector2 end = (Vector2){ childFrame->outerRect.x, childFrame->outerRect.y + childFrame->outerRect.height / 2.0f };
             rmviDrawArrowRect2(start, end, ARROWSIZE, RATIODEFAULT, leftRatio, DRAWCOLOR);
             if (listText != NULL && listText[count + j] != NULL) {
-                float startRight = start.x + (end.x- start.x)* leftRatio;
-                // Vector2 position = { startRight + (end.x - startRight) * ratioWriteArrow - rmviCalcTextWidth(listText[count + j], mathFont, size, size / RATIO_SPACE)/2, end.y - rmviCalcTextHeight(listText[count + j], mathFont, size, size / RATIO_SPACE, false)} ;
-                Vector2 position = {0 ,0};
-                rmviMyDrawText(listText[count + j], position, size, color);
+                rmviDrawTextMidClassic(listText[count + j], childFrame->innerRect);
             }
         }
         count += nChildren; 
-        printf(" fct rmviDrawTreeSquareWrite à implémenter car rmviCalcTextWidth n'existe plus");
-        exit(EXIT_FAILURE);
     }
 }
 
-// done un atom
+
+
+
+
 rmviAtom rmviGetAtom(rmviFrame *frame, const char *nature, float lifespan, rmviAtom *daughter){
-    rmviAtom atom;
+    rmviAtom atom = {0};
     atom.frame = frame;
     atom.nature = nature;
     atom.lifespan = lifespan;
     atom.lambda = logf(2.0f) / lifespan;  
     atom.daughter = daughter;
     atom.alive = true;
-    frame ? (atom.center = (Vector2){ frame->outerRect.x + frame->outerRect.width / 2.0f, frame->outerRect.y + frame->outerRect.height / 2.0f }) : (atom.center = (Vector2){0.0f, 0.0f});
-    atom.speed = (Vector2){0.0f, 0.0f};
+    frame ? (atom.center = (Vector2d){ frame->outerRect.x + frame->outerRect.width / 2.0, frame->outerRect.y + frame->outerRect.height / 2.0 }) : 
+            (atom.center = (Vector2d){0});
     return atom;
 }
 // get an atom with a speed
-rmviAtom rmviGetAtomSpeed(rmviFrame *frame, const char *nature, float lifespan, rmviAtom *daughter, Vector2 speed){
+rmviAtom rmviGetAtomSpeed(rmviFrame *frame, const char *nature, float lifespan, rmviAtom *daughter, Vector2d speed){
     rmviAtom atom = rmviGetAtom(frame, nature, lifespan, daughter);
     atom.speed = speed;
     return atom;
@@ -678,33 +1287,34 @@ void rmviAtomDecay(rmviAtom *atom){
     atom->daughter = atom->daughter->daughter;
     rmviRewriteFrame(atom->frame, atom->nature);
 }
-bool rmviVector2IsZero(Vector2 vec) {
-    return (vec.x == 0.0f && vec.y == 0.0f);
+bool rmviVector2dIsZero(Vector2d vec) {
+    return (vec.x == 0.0 && vec.y == 0.0);
 }
 void rmviAtomUpdate(rmviAtom *atom){
-    if(!rmviVector2IsZero(atom->speed)){
-        rmviUpdateFrame(atom->frame, atom->frame->outerRect.x + atom->speed.x , atom->frame->outerRect.y + atom->speed.y, atom->frame->outerRect.width, atom->frame->outerRect.height, atom->frame->lineThick, atom->frame->innerColor, atom->frame->outerColor, atom->frame->text, atom->frame->font);
+    if(!rmviVector2dIsZero(atom->speed)){
+        rmviUpdateFrame(atom->frame, atom->frame->outerRect.x + atom->speed.x , atom->frame->outerRect.y + atom->speed.y, atom->frame->outerRect.width, atom->frame->outerRect.height, atom->frame->lineThick, atom->frame->innerColor, atom->frame->outerColor, atom->frame->state);
+        //rmviUpdateFrameText(atom->frame->text);
     }
 }
 
-rmviFrame rmviGetElectron(float posX, float posY){
-    rmviFrame electron = rmviGetRoundFrameBGCentered(posX, posY, 40, 5, "e-", mathFont);
+rmviFrame rmviGetElectron(float posX, float posY, State *state){
+    rmviFrame electron = rmviGetRoundFrameBGCentered(posX, posY, 40, 5, "e-", state);
     return electron;
 }
-rmviFrame rmviGetNeutrino(float posX, float posY){
-    rmviFrame neutrino = rmviGetRoundFrameBGCentered(posX, posY, 50, 5, "/nu", mathFont);
+rmviFrame rmviGetNeutrino(float posX, float posY, State *state){
+    rmviFrame neutrino = rmviGetRoundFrameBGCentered(posX, posY, 50, 5, "/nu", state);
     return neutrino;
 }
 void rmviAtomEmission(rmviAtom *atom){
     // Crée un électron et l'émet
-    rmviFrame electron = rmviGetElectron(atom->frame->outerRect.x, atom->frame->outerRect.y);
+    rmviFrame electron = rmviGetElectron(atom->frame->outerRect.x, atom->frame->outerRect.y, atom->frame->state);
     // Crée un neutrino et l'émet
-    rmviFrame neutrino = rmviGetNeutrino(atom->frame->outerRect.x, atom->frame->outerRect.y);
+    rmviFrame neutrino = rmviGetNeutrino(atom->frame->outerRect.x, atom->frame->outerRect.y,atom->frame->state);
     // angle donnée par sampleCosTheta
 }
 // Dessine l'atom
 void rmviDrawAtom(rmviAtom atom) {
-    rmviDrawFrame(*(atom.frame), RATIODEFAULT);
+    rmviDrawFrame((atom.frame));
 }
 // Tire un nombre aléatoire uniforme entre 0 et 1
 float rmviRand() {
@@ -742,7 +1352,7 @@ float sampleCosTheta(float a, float beta_e) {
     }
 }
 
-rmviPlanet rmviGetPlanet(Vector2 position, float mass, Vector2 velocity, Vector2 force, Texture2D texture, float height){
+rmviPlanet rmviGetPlanet(Vector2d position, double mass, Vector2d velocity, Vector2d force, Texture2D texture, float height){
     rmviPlanet planet = { .features = { position, mass, velocity, force }, .visual = { texture, height, height } };
     return planet;
 }
@@ -751,7 +1361,7 @@ void rmviAddDash2(rmviDash2 *dashPlanet,int count, int countFrame, int step, rmv
     int i;
     if ((int) countFrame%step == 0){   
         i = (int)(countFrame/step)%count;
-        dashPlanet[i] = (rmviDash2){Vector2Add(features->position, Vector2Scale(center,-1)), Vector2Add(features->velocity, Vector2Scale(speed,-1))};
+        dashPlanet[i] = (rmviDash2){Vector2Add(Vector2d2Vector2(features->position), Vector2Scale(center,-1)), Vector2Add(Vector2d2Vector2(features->velocity), Vector2Scale(speed,-1))};
     }
 }
 void rmviDrawDash2Fast(rmviDash2 *dashPlanet, Vector2 center, Color color, float scale, int n) {
@@ -767,10 +1377,42 @@ void rmviDrawDash2Fast(rmviDash2 *dashPlanet, Vector2 center, Color color, float
     rlEnd();
 }
 
-rmviPlanet3D rmviGetPlanet3D(Vector3 position, float mass, Vector3 velocity, Vector3 force, const char* modelPath){
+rmviPlanet3D rmviGetPlanet3D(Vector3d position, float mass, Vector3d velocity, Vector3d force, const char* modelPath){
     rmviPlanet3D planet = {.features = { position, mass, velocity, force }, .model = LoadModel(modelPath) };
     return planet;
 }
+
+void rmviAddDash3(rmviDash3 *dashPlanet,int count, int countFrame, int step, rmviDynamic3D *features, Vector3 center, Vector3 speed){
+    int i;
+    if ((int) countFrame%step == 0){   
+        i = (int)(countFrame/step)%count;
+        dashPlanet[i] = (rmviDash3){Vector3Add(Vector3d2Vector3(features->position), Vector3Scale(center,-1)), Vector3Add(Vector3d2Vector3(features->velocity), Vector3Scale(speed,-1))};
+    }
+}
+
+void rmviDrawDash3Fast(const rmviDash3 *dashList, int count,float dashLen, float scale,Color color)
+{
+    if (!dashList || count <= 0) return;
+
+    rlBegin(RL_LINES);
+    rlColor4ub(color.r, color.g, color.b, color.a);
+
+    for (int i = 0; i < count; i++){
+        Vector3 start = Vector3Scale(dashList[i].position, scale);
+        Vector3 v = dashList[i].velocity;
+        float vlen = Vector3Length(v);
+        if (vlen < 1e-8f) continue;
+
+        Vector3 dir = Vector3Scale(v, 1.0f / vlen);
+        Vector3 end = Vector3Add(start, Vector3Scale(dir, -dashLen));
+
+        rlVertex3f(start.x, start.y, start.z);
+        rlVertex3f(end.x,   end.y,   end.z);
+    }
+
+    rlEnd();
+}
+
 
 Color GetAverageColor(Texture2D texture) {
     // On charge les pixels en RAM

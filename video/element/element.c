@@ -329,17 +329,13 @@ void drawTemperatureParticles(ParticleSystem *ps){
     }
 }
 
-
-
-
-
 void DrawTickMarks(float posX, float posY, int year, Color color){
     char buffer[16];
     (year == -1) ? (void)strcpy(buffer, "") : (void)snprintf(buffer, sizeof(buffer), "%d", year);
     DrawLineEx((Vector2){posX, posY}, (Vector2){posX, posY - TSTHICK*RATIOTICKSIZE}, TSTHICK*RATIOTICKTHICK, color);
     Vector2 textSize = MeasureTextEx(mathFont, buffer, TEXTSIZE, TEXTSPACE);
     Vector2 posWrite = (Vector2){posX - textSize.x / 2, posY + TSTHICK*RATIOTICKSIZE};
-    rmviWriteLatex(buffer, &posWrite, TEXTSIZE, TEXTSPACE, color, mathFont);
+    rmviWriteLatexClassic(buffer, &posWrite);
 }
 
 void drawTimescale(Timescale ts, float posY, Color color) {

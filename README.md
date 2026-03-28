@@ -45,3 +45,6 @@ Etablir un txt qui transformera le tout en vidéo celui ci devrait faire lien en
 ### Vidéo sur les chaines de Markov
 
 ### Vidéo sur l'islande
+
+### test
+[![Voir la vidéo](thumbnail.png)](./soleil_example.mp4)

@@ -47,12 +47,11 @@ typedef struct{
     int     countRight;             // nombre de fois ou on a appuyé sur la touche pour faire avancer la présentation
     bool    draw;                   // si on affiche les planètes ou pas    
     bool    ecrit;                  // si on affiche le texte ou pas
+    bool    run;
     int     calculByFrame;          // on fait pow(2, calculByFrame) par frame pour faire avancer la simulation plus vite
     bool    isTransition;           // si on est en train de faire un changement de référentiel ou pas
     bool    resetDash;              // reset de dash
-} Representation;
-
-static Quaternion camRot = { 0, 0, 0, 1 }; 
+} Representation; 
 //  toutes les distances sont mise aux aphélies
 float frameInitCenterView = 0.0f, countFrame = 0.0f;                  // Début du centrage sur la terre
 PlanetData *planetsData;
@@ -116,13 +115,14 @@ float skyboxVertices[] = {
     -1.0f, -0.4,  1.0f
 };
 
-Camera3D camera = {
-    .position = {0.0f, 0.0f,  +100.0f},
-    .target = {0.0f, 0.0f, -1.0f},
-    .up = {0.0f, 1.0f,  0.0f},
-    .fovy = 45,
-    .projection = CAMERA_PERSPECTIVE
-};
+static Quaternion camRot = {0.0f,0.0f,0.0f,1.0f};
+Vector3 initUp = {0.0f, 1.0f,  0.0f};                   // vecteur initialement en haut de la caméra
+Vector3 initRight = { 1.0f, 0.0f, 0.0f };               // vecteur initialement à droite de la caméra
+Vector3 initTarget;                                     // j'ai l'impressions qu'il sert à rien de le définir
+Vector3 initPos = {0.0f, 400.0f,  0.0f};                // position initiale de la camera
+float initAngle = -90.0*DEG2RAD;                        // angle de rotation initiale de la camera
+Vector3 initVector = {1.0f,0.0f,0.0f};                  // vecteur de rotation initiale de la camera
+Camera3D camera;
 
 Player player;
 float lastX, lastY;                // zoom
@@ -140,10 +140,10 @@ Representation repEarth = {
     .rotation = true,
     .ua2Pixel = 800,
     .asteroid = false,
-    .countRight = 0,
-    .draw = false,
-    .ecrit = false,
-    .calculByFrame = 1
+    .draw = true,
+    .run = true,
+    .calculByFrame = 4,
+    .helpActive = true
 };
 
 static bool strongAmbient = false;
@@ -217,11 +217,19 @@ int bm_visual_main(void){
     Lecture lecture = rmviGetLecture(HERE_PATH "presentation.txt");
     //mp4ToTexture(IMAGE_PATH "decompte/decompte.mp4", IMAGE_PATH "decompte", "decompte");
     //Video decompte = LoadVideo(IMAGE_PATH "decompte/decompte.mp4", IMAGE_PATH "decompte", "decompte", 0);
+    camera =(Camera3D) {
+        .position = initPos,
+        .target = initTarget,
+        .up = initUp,
+        .fovy = 45,
+        .projection = CAMERA_PERSPECTIVE
+    };
     player = (Player){
         .camera = camera,
         .velocity = {0,0,0},
         .speed = 500.0f
     };
+    camRot = QuaternionFromAxisAngle(initVector, initAngle);
 
     // asteroid
     Shader asteroidShader = LoadShader(SHADER_PATH "asteroid.vs", SHADER_PATH "asteroid.fs");
@@ -324,112 +332,117 @@ int bm_visual_main(void){
         deltatime = curentFrame - oldFrame;
         oldFrame = curentFrame;
         BeginTextureMode(screen);
-            ClearBackground(BG);
-            rlClearScreenBuffers();  // clear color + depth (et stencil si présent)
-            rlEnableDepthTest();
-            // Player movement and camera
             processInput();
-            if(IsKeyPressed(KEY_RIGHT)) resetAnimText(animText);
-            updateMouse();
-            //PlayVideo(&decompte);
-            updateZoom(GetMouseWheelMoveV());
-            // updatepos
-            if (actualRep.rotation) rotationFrame++;
-            if (actualRep.isTransition){
-                transitionFactor += 1/(TIME_TO_TRANSITION*FPS);
-                if(transitionFactor >=1){
-                    actualRep.isTransition = false;
-                    transitionFactor = 1;
-                    //centerPos = features[3]->position;
-                } 
-            }
-            if(actualRep.resetDash){
-                actualRep.resetDash = false;
-                for (int i = 0; i < 7; i++) {
-                    memset(dashList[i], 0, sizeof(rmviDash3) * MEMORY);
+            if(actualRep.run){
+                ClearBackground(BG);
+                rlClearScreenBuffers();  // clear color + depth (et stencil si présent)
+                rlEnableDepthTest();
+                // Player movement and camera
+                if(IsKeyPressed(KEY_RIGHT)) resetAnimText(animText);
+                updateMouse();
+                //PlayVideo(&decompte);
+                updateZoom(GetMouseWheelMoveV());
+                // updatepos
+                if (actualRep.rotation) rotationFrame++;
+                if (actualRep.isTransition){
+                    transitionFactor += 1/(TIME_TO_TRANSITION*FPS);
+                    if(transitionFactor >=1){
+                        transitionFactor = 1;
+                    } 
                 }
-            }
-            for(int j = 0; j< pow(2,actualRep.calculByFrame); j++){
-                rmviGravityRepulsion3D(features,planetCount);
-                centerSpeed = Vector3dScale(features[3]->velocity,transitionFactor);
-                centerPos = Vector3dScale(features[3]->position,transitionFactor);
+                else{
+                    transitionFactor -= 1/(TIME_TO_TRANSITION*FPS);
+                    if(transitionFactor <=0) transitionFactor = 0;
+                }
+                
+                if(actualRep.resetDash){
+                    actualRep.resetDash = false;
+                    for (int i = 0; i < 7; i++) {
+                        memset(dashList[i], 0, sizeof(rmviDash3) * MEMORY);
+                    }
+                }
+                for(int j = 0; j< pow(2,actualRep.calculByFrame); j++){
+                    rmviGravityRepulsion3D(features,planetCount);
+                    centerSpeed = Vector3dScale(features[3]->velocity,transitionFactor);
+                    centerPos = Vector3dScale(features[3]->position,transitionFactor);
+                    for(int i = 0; i< planetCount; i++){
+                        rmviUpdatePosition3D(features[i],actualRep.frame2Sec,centerSpeed, (Vector3d) {0});
+                        rmviAddDash3(dashList[i], MEMORY, countFrame, 2, features[i], camera.position,Vector3d2Vector3(centerSpeed));
+                    }
+                }
                 for(int i = 0; i< planetCount; i++){
-                    rmviUpdatePosition3D(features[i],actualRep.frame2Sec,centerSpeed, (Vector3d) {0});
-                    rmviAddDash3(dashList[i], MEMORY, countFrame, 2, features[i], camera.position,Vector3d2Vector3(centerSpeed));
-                }
-            }
-            for(int i = 0; i< planetCount; i++){
-                features[i]->position = Vector3dSubtract(features[i]->position, Vector3dScale(centerPos,transitionFactor));
-            }
-            viewMat = MatrixLookAt(camera.position, 
-                Vector3Add(camera.position,camera.target), 
-                camera.up);
-            useOrtho ? 
-                (projMat = MatrixOrtho( -sizeOrtho * aspect,sizeOrtho * aspect,-sizeOrtho, sizeOrtho, 0.1f, 3000.0f)):
-                (projMat = MatrixPerspective(DEG2RAD * camera.fovy,aspect,0.1f,30000.0f));
-            rlSetMatrixProjection(projMat);
-            rlSetMatrixModelview(viewMat);
-            light.position = Vector3Scale(Vector3d2Vector3(features[0]->position), 1.0 /UA * actualRep.ua2Pixel);
-            for(int i = 0; i< planetCount; i++){
-                if(actualRep.draw){
-                    modelMat = getModelMatPlanet(i, planets[i], rotationFrame, actualRep, planetsData[i]);
-                    SetShaderValue(planets[i].shader, planets[i].locUniform.lightLoc.position, &light.position,RL_SHADER_UNIFORM_VEC3);
-                    SetShaderValue(planets[i].shader, planets[i].locUniform.lightLoc.ambient, &light.ambient,RL_SHADER_UNIFORM_VEC3);
-                    SetShaderValue(planets[i].shader, planets[i].locUniform.viewPosLoc, &camera.position, RL_SHADER_UNIFORM_VEC3);
-                    if (planets[i].locUniform.timeLoc != -1){
-                        float time = (float)GetTime();
-                        SetShaderValue(planets[i].shader, planets[i].locUniform.timeLoc, &time, RL_SHADER_UNIFORM_FLOAT);
-                        //SetShaderValue(planets[i].shader, locCam, &camera.position, SHADER_UNIFORM_VEC3);
-                        if(i == 0){
-                            sunPos = Vector3Scale(Vector3d2Vector3(features[i]->position), UA2PIXEL/UA) ; 
-                            SetShaderValue(planets[i].shader, centerSunLoc, &sunPos, SHADER_UNIFORM_VEC3);
-                            SetShaderValue(myShader, locCam, &camera.position, SHADER_UNIFORM_VEC3);
+                    features[i]->position = Vector3dSubtract(features[i]->position, Vector3dScale(centerPos,transitionFactor));
+                }//,
+                viewMat = MatrixLookAt(camera.position, 
+                    Vector3Add(camera.position,camera.target),
+                    camera.up);
+                useOrtho ? 
+                    (projMat = MatrixOrtho( -sizeOrtho * aspect,sizeOrtho * aspect,-sizeOrtho, sizeOrtho, 0.1f, 3000.0f)):
+                    (projMat = MatrixPerspective(DEG2RAD * camera.fovy,aspect,0.1f,30000.0f));
+                rlSetMatrixProjection(projMat);
+                rlSetMatrixModelview(viewMat);
+                light.position = Vector3Scale(Vector3d2Vector3(features[0]->position), 1.0 /UA * actualRep.ua2Pixel);
+                for(int i = 0; i< planetCount; i++){
+                    if(actualRep.draw){
+                        modelMat = getModelMatPlanet(i, planets[i], rotationFrame, actualRep, planetsData[i]);
+                        SetShaderValue(planets[i].shader, planets[i].locUniform.lightLoc.position, &light.position,RL_SHADER_UNIFORM_VEC3);
+                        SetShaderValue(planets[i].shader, planets[i].locUniform.lightLoc.ambient, &light.ambient,RL_SHADER_UNIFORM_VEC3);
+                        SetShaderValue(planets[i].shader, planets[i].locUniform.viewPosLoc, &camera.position, RL_SHADER_UNIFORM_VEC3);
+                        if (planets[i].locUniform.timeLoc != -1){
+                            float time = (float)GetTime();
+                            SetShaderValue(planets[i].shader, planets[i].locUniform.timeLoc, &time, RL_SHADER_UNIFORM_FLOAT);
+                            //SetShaderValue(planets[i].shader, locCam, &camera.position, SHADER_UNIFORM_VEC3);
+                            if(i == 0){
+                                sunPos = Vector3Scale(Vector3d2Vector3(features[i]->position), UA2PIXEL/UA) ; 
+                                SetShaderValue(planets[i].shader, centerSunLoc, &sunPos, SHADER_UNIFORM_VEC3);
+                                SetShaderValue(myShader, locCam, &camera.position, SHADER_UNIFORM_VEC3);
+                            }
                         }
-                    }
-                    updatePlanet3D(planets[i],modelMat,viewMat,projMat);
-                    if( i == 3) {
-                        rlActiveTextureSlot(1);
-                        rlEnableTexture(nightTex.id);
-                    }
+                        updatePlanet3D(planets[i],modelMat,viewMat,projMat);
+                        if( i == 3) {
+                            rlActiveTextureSlot(1);
+                            rlEnableTexture(nightTex.id);
+                        }
 
-                    drawPlanet3D(planets[i]);
-                    if(i==6) astModelMat = modelMat;
-                    rlDisableShader();
-                    // modelview
-                    rmviDrawDash3Fast(dashList[i], MEMORY , 10.0f,  1.0f /UA * actualRep.ua2Pixel,colorListPlanet[i]);
+                        drawPlanet3D(planets[i]);
+                        if(i==6) astModelMat = modelMat;
+                        rlDisableShader();
+                        // modelview
+                        rmviDrawDash3Fast(dashList[i], MEMORY , 10.0f,  1.0f /UA * actualRep.ua2Pixel,colorListPlanet[i]);
+                    }
                 }
-            }
-            // draw asteroid field
-            if (actualRep.asteroid && actualRep.draw){
-                SetShaderValueMatrix(asteroidShader, astParentLoc, astModelMat);
-                for (int m = 0; m < asteroid.meshCount; m++){
-                    int matIndex = asteroid.meshMaterial[m];
-                    Material *mat = &asteroid.materials[matIndex];
-                    rlEnableShader(mat->shader.id);
-                    rlSetUniformMatrices(astViewLoc, &viewMat,1);
-                    rlSetUniformMatrices(astProjLoc, &projMat,1);
-                    rlActiveTextureSlot(0);
-                    rlEnableTexture(mat->maps[MATERIAL_MAP_DIFFUSE].texture.id);
-                    rlEnableVertexArray(asteroid.meshes[m].vaoId);
-                    rlDrawVertexArrayInstanced(0, asteroid.meshes[m].vertexCount,amount );
-                    rlDisableVertexArray();
-                    
+                // draw asteroid field
+                if (actualRep.asteroid && actualRep.draw){
+                    SetShaderValueMatrix(asteroidShader, astParentLoc, astModelMat);
+                    for (int m = 0; m < asteroid.meshCount; m++){
+                        int matIndex = asteroid.meshMaterial[m];
+                        Material *mat = &asteroid.materials[matIndex];
+                        rlEnableShader(mat->shader.id);
+                        rlSetUniformMatrices(astViewLoc, &viewMat,1);
+                        rlSetUniformMatrices(astProjLoc, &projMat,1);
+                        rlActiveTextureSlot(0);
+                        rlEnableTexture(mat->maps[MATERIAL_MAP_DIFFUSE].texture.id);
+                        rlEnableVertexArray(asteroid.meshes[m].vaoId);
+                        rlDrawVertexArrayInstanced(0, asteroid.meshes[m].vertexCount,amount );
+                        rlDisableVertexArray();
+                        
+                    }
                 }
+                rlDisableShader();
+                lecture.currentParagraph = actualRep.countRight;
+                //skybox
+                sunDir = Vector3Normalize(Vector3Subtract(light.position, camera.position));
+                rlEnableVertexArray(skyVao);
+                rlEnableShader(skyshader.id);
+                rlSetUniformMatrices(skyViewLoc, &viewMat,1);
+                rlSetUniformMatrices(skyProjLoc, &projMat,1);
+                rlSetUniform(sunDirLoc, &sunDir, RL_SHADER_UNIFORM_VEC3, 1);
+                rlSetUniform(cameraFrontLoc, &camera.target, RL_SHADER_UNIFORM_VEC3, 1);
+                //rlActiveTextureSlot(0);
+                //rlEnableTextureCubemap(cubemapId);
+                rlDrawVertexArray(0,36);
+                rlEnableDepthMask();
             }
-            rlDisableShader();
-            lecture.currentParagraph = actualRep.countRight;
-            //skybox
-            sunDir = Vector3Normalize(Vector3Subtract(light.position, camera.position));
-            rlEnableVertexArray(skyVao);
-            rlEnableShader(skyshader.id);
-            rlSetUniformMatrices(skyViewLoc, &viewMat,1);
-            rlSetUniformMatrices(skyProjLoc, &projMat,1);
-            rlSetUniform(sunDirLoc, &sunDir, RL_SHADER_UNIFORM_VEC3, 1);
-            rlSetUniform(cameraFrontLoc, &camera.target, RL_SHADER_UNIFORM_VEC3, 1);
-            //rlActiveTextureSlot(0);
-            //rlEnableTextureCubemap(cubemapId);
-            rlDrawVertexArray(0,36);
-            rlEnableDepthMask();
         EndTextureMode();
         // ecrans 2d
         BeginTextureMode(screen);
@@ -742,8 +755,8 @@ void updateMouse(){
     float pitchDelta =  -delta.y * sensitivity;
     // il faut ajouter un qroll
     // ici on pourrait définir directement l'axe perpendiculaire et définir seulement un q non
-    Vector3 worldUp = Vector3RotateByQuaternion((Vector3){ 0, 1, 0 }, camRot);
-    Vector3 right = Vector3RotateByQuaternion((Vector3){ 1, 0, 0 }, camRot);
+    Vector3 worldUp = Vector3RotateByQuaternion(initUp, camRot);
+    Vector3 right = Vector3RotateByQuaternion(initRight, camRot);
     
     Quaternion qYaw   = QuaternionFromAxisAngle(worldUp, yawDelta);
     Quaternion qPitch = QuaternionFromAxisAngle(right,  pitchDelta);
@@ -773,7 +786,7 @@ void processInput(){
         Vector3Scale(Vector3Normalize (Vector3CrossProduct(camera.target,camera.up)),player.speed*deltatime));
     if (IsKeyDown(KEY_D)) camera.position = Vector3Add(camera.position , 
         Vector3Scale(Vector3Normalize (Vector3CrossProduct(camera.target,camera.up)),player.speed*deltatime));
-    if (IsKeyPressed(KEY_P)) useOrtho = !useOrtho;
+    if (IsKeyPressed(KEY_P)){ actualRep.run = !actualRep.run;}
     if(IsKeyPressed(KEY_M)) rec.isRecording ? StopAudioRecorder(&rec) : StartAudioRecorder(&rec);
     if(IsKeyPressed(KEY_R)) actualRep.rotation = !actualRep.rotation;
     if (IsKeyPressed(KEY_ZERO))  camera.position = Vector3Scale( Vector3d2Vector3(planets[0].features.position),  1.0f /UA * actualRep.ua2Pixel);
@@ -799,7 +812,7 @@ void processInput(){
     if (IsKeyPressed(KEY_LEFT) && actualRep.countRight > 0) actualRep.countRight--;
     if (IsKeyPressed(KEY_J)) actualRep.reference = 5;
     if (IsKeyPressed(KEY_T)) actualRep.reference = 3;
-    if (IsKeyPressed(KEY_Y)) actualRep.isTransition = !actualRep.isTransition ;
+    if (IsKeyPressed(KEY_Y)) actualRep.isTransition = !actualRep.isTransition;
     if (IsKeyPressed(KEY_X)) actualRep.isTransition = true ;
     if (IsKeyPressed(KEY_DOWN)) actualRep.calculByFrame --;
     if (IsKeyPressed(KEY_UP)) actualRep.calculByFrame ++;

@@ -1,0 +1,86 @@
+#include "config.h"
+#include <stdio.h>
+
+Image image;    // pour ffmpeg
+bool recording;
+const char *version;
+void processInput();
+void updateMouse();
+void updateZoom(Vector2 wheel);
+void rmviDraw();
+void addImageToffmpeg(void *ffmpeg);
+
+
+int bm_visual_main(void){   
+    float startTime = GetTime();
+    while (!WindowShouldClose()){
+        UpdateCursorToggle();
+        BeginTextureMode(screen);
+            ClearBackground(BG);
+            
+        EndTextureMode();
+        // ecrans 2d
+        BeginTextureMode(screen);
+            DrawFPS(10, 10);
+        EndTextureMode();
+        rmviDraw();
+        if (recording) addImageToffmpeg(ffmpeg);
+    }
+    return 0;
+}
+
+int bm_visual_initialisation(void) {
+    // Initialize raylib and audio
+    char audioPath[256];
+    char videoPath[256];
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+    int screenWidth = WIDTH;
+    int screenHeight = HEIGHT;
+    InitWindow(screenWidth, screenHeight, "test example");
+    SetTargetFPS(FPS); 
+    rlEnableDepthTest();
+    screen = LoadRenderTexture(GetScreenWidth(), GetScreenHeight());
+    rmviGetCustomFont(FONT_PATH, 80);
+    if (recording) {
+        snprintf(audioPath, sizeof(audioPath), "%s/%s.wav", OUTPUT_DIR, version);
+        snprintf(videoPath, sizeof(videoPath), "%s/%s.mp4", OUTPUT_DIR, version);
+        ffmpeg = ffmpeg_start_rendering(GetScreenWidth(), GetScreenHeight(), FPS, videoPath);
+        InitAudioDevice();
+        printf("Audio will be recorded to: %s\n", audioPath);
+        rec = InitAudioRecorder(audioPath);       // faire un chemin avec le cmake
+    }
+    return 0;  // Success
+}
+int bm_visual_uninitialisation(void) {
+    // De-Initialization
+    CloseWindow();  // Close window and OpenGL context
+    UnloadFont(mathFont);
+    UnloadRenderTexture(screen);
+    if (RECORDING) ffmpeg_end_rendering(ffmpeg);
+    return 0;  // Success
+}
+
+void rmviDraw(){
+    BeginDrawing();
+        ClearBackground(BG);
+        DrawTexturePro(screen.texture, (Rectangle){ 0, 0, (float)screen.texture.width, -(float)screen.texture.height }, (Rectangle){ 0, 0, (float)screen.texture.width, (float)screen.texture.height}, (Vector2){ 0, 0 }, 0.0f, WHITE);
+    EndDrawing();
+}
+
+void addImageToffmpeg(void *ffmpeg) {
+    image =  LoadImageFromTexture(screen.texture);
+    ffmpeg_send_frame(ffmpeg, image.data, image.width, image.height);
+    UnloadImage(image);
+}
+int main(int argc, char *argv[]){
+    /*
+    On utilise un format de fonction qui prend 0 1 pour l'enregistrement, si 1 alors ensuite on donne le noms
+    */
+    recording = (argc >= 2) ? (strcmp(argv[1], "1") == 0) : false;
+    version = (argc >= 3) ? argv[2] : "output"; 
+    bm_visual_initialisation();
+    printf("Audio ready: %d\n", IsAudioDeviceReady());
+    bm_visual_main();
+    bm_visual_uninitialisation();
+    return 0;
+}

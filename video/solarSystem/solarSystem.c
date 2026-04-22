@@ -58,6 +58,7 @@ PlanetData *planetsData;
 
 Image image;    // pour ffmpeg
 
+bool recording;
 const char *version;
 void processInput();
 void updateMouse();
@@ -119,7 +120,7 @@ static Quaternion camRot = {0.0f,0.0f,0.0f,1.0f};
 Vector3 initUp = {0.0f, 1.0f,  0.0f};                   // vecteur initialement en haut de la caméra
 Vector3 initRight = { 1.0f, 0.0f, 0.0f };               // vecteur initialement à droite de la caméra
 Vector3 initTarget;                                     // j'ai l'impressions qu'il sert à rien de le définir
-Vector3 initPos = {0.0f, 400.0f,  0.0f};                // position initiale de la camera
+Vector3 initPos = {0.0f, 3000.0f,  0.0f};                // position initiale de la camera
 float initAngle = -90.0*DEG2RAD;                        // angle de rotation initiale de la camera
 Vector3 initVector = {1.0f,0.0f,0.0f};                  // vecteur de rotation initiale de la camera
 Camera3D camera;
@@ -142,7 +143,7 @@ Representation repEarth = {
     .asteroid = false,
     .draw = true,
     .run = true,
-    .calculByFrame = 4,
+    .calculByFrame = 8,
     .helpActive = true
 };
 
@@ -213,7 +214,7 @@ int bm_visual_main(void){
     Vector3 sunDir;
     Vector3d  centerSpeed = (Vector3d) {0};
     Vector3d centerPos = (Vector3d) {0};
-    rmviCarthesian carthesian = rmviGetCarthesian((Vector2) {CENTER.x/2, CENTER.y},(Vector2){490, 420},(Vector2){70, 70});
+    rmviCartesian cartesian = rmviGetCartesian((Vector2) {CENTER.x/2, CENTER.y}, (Vector2){490, 420}, (Vector2){70, 70});
     Lecture lecture = rmviGetLecture(HERE_PATH "presentation.txt");
     //mp4ToTexture(IMAGE_PATH "decompte/decompte.mp4", IMAGE_PATH "decompte", "decompte");
     //Video decompte = LoadVideo(IMAGE_PATH "decompte/decompte.mp4", IMAGE_PATH "decompte", "decompte", 0);
@@ -461,12 +462,12 @@ int bm_visual_main(void){
                 //rmviDrawRenderBoxesCentered(listWidth, heighTotal,boxes, boxCount,drawPos,mathFont,SIZE_TEXT, SIZE_SPACING,WHITE);
                 rmviDrawRenderBoxesCenteredAnimed(boxes, boxCount,drawPos,animText);
                 rmviAudioRenderBoxesAnimed(animText);
-                //rmviDrawCarthesianFull(carthesian, 10, 3, WHITE,true,false);
+                //rmviDrawCartesianFull(&cartesian, 10, 3, WHITE, true, false);
                 //rmviWriteLatex(paragraph, &drawPos, SIZE_TEXT, SIZE_SPACING, WHITE, mathFont);    
             }
         EndTextureMode();
         rmviDraw();
-        if (RECORDING) addImageToffmpeg(ffmpeg);
+        if (recording) addImageToffmpeg(ffmpeg);
         countFrame++;
     }
     free(planets);
@@ -476,6 +477,7 @@ int bm_visual_main(void){
 int bm_visual_initialisation(void) {
     // Initialize raylib and audio
     char audioPath[256];
+    char videoPath[256];
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     int screenWidth = WIDTH;
     int screenHeight = HEIGHT;
@@ -484,8 +486,11 @@ int bm_visual_initialisation(void) {
     rlEnableDepthTest();
     screen = LoadRenderTexture(GetScreenWidth(), GetScreenHeight());
     rmviGetCustomFont(FONT_PATH, 80);
-    if (RECORDING) ffmpeg = ffmpeg_start_rendering(GetScreenWidth(), GetScreenHeight(), FPS);
-    if (AUDIO_RECORDING) {
+    if (recording) {
+        snprintf(videoPath, sizeof(videoPath), "%s/%s.mp4", OUTPUT_DIR, version);
+        ffmpeg = ffmpeg_start_rendering(GetScreenWidth(), GetScreenHeight(), FPS, videoPath);
+    }
+    if (recording) {
         InitAudioDevice();                                      // Initialise audio
         snprintf(audioPath, sizeof(audioPath), "%s/%s.wav", OUTPUT_DIR, version);
         printf("Audio will be recorded to: %s\n", audioPath);
@@ -498,7 +503,7 @@ int bm_visual_uninitialisation(void) {
     CloseWindow();  // Close window and OpenGL context
     UnloadFont(mathFont);
     UnloadRenderTexture(screen);
-    if (RECORDING) ffmpeg_end_rendering(ffmpeg);
+    if (recording) ffmpeg_end_rendering(ffmpeg);
     return 0;  // Success
 }
 
@@ -515,7 +520,11 @@ void addImageToffmpeg(void *ffmpeg) {
     UnloadImage(image);
 }
 int main(int argc, char *argv[]){
-    version = (argc > 1) ? argv[1] : "0"; 
+    /*
+    On utilise un format de fonction qui prend 0 1 pour l'enregistrement, si 1 alors ensuite on donne le noms
+    */
+    recording = (argc >= 2) ? (strcmp(argv[1], "1") == 0) : false;
+    version = (argc >= 3) ? argv[2] : "output";
     bm_visual_initialisation();
     printf("Audio ready: %d\n", IsAudioDeviceReady());
     bm_visual_main();

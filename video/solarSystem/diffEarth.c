@@ -83,6 +83,7 @@ Vector3 GetModelCenter(Model model);
 void SetShaderLight(Shader shader, lightLoc matLoc, Light light);
 lightLoc rlGetLocationLight(unsigned int shader_id, const char *name);
 static bool useOrtho = false;
+bool recording;
 #define MEMORY 500
 
 Player player;
@@ -223,15 +224,16 @@ int bm_visual_main(void){
     int annee[4] = {0,0,0,0};
     bool changeAnnee[4] = {false,false,false,false};
     Vector3d  centerSpeed = (Vector3d) {0};
-    rmviCarthesian carthesian = rmviGetCarthesian((Vector2) {CENTER.x, CENTER.y},(Vector2){CENTER.x/2, CENTER.y/2},(Vector2){20, 0.01});
-    rmviSetCarthesianTitle(&carthesian,"Ecart relatif de l'aphélie mesuré");
-    rmviSetCarthesianAxesLabel(&carthesian,"Tours", "/frac{r-r_e}{r_e}");
+    rmviCartesian cartesian = rmviGetCartesian((Vector2) {CENTER.x, CENTER.y}, (Vector2){CENTER.x/2, CENTER.y/2}, (Vector2){20, 0.01f});
+    rmviSetCartesianTitle(&cartesian,"Ecart relatif de l'aphélie mesuré");
+    rmviSetCartesianAxesLabel(&cartesian,"Tours", "/frac{r-r_e}{r_e}");
     rmviLegend legend = rmviGetLegend(4);
     for(int i=0; i<4;i++){
         char name[64];
         snprintf(name, sizeof(name), "/Delta t =/ %d s", factDeltat[i]*(int)actualRep.frame2Sec);
         rmviAddLegend(&legend, colors[i], name);
     }
+    cartesian.legendData = &legend;
     float r[4];
     float theta[4];
     float exactr = calculr(H2Mercure,features[0][0]->mass,planetsData[1].e,0.0);
@@ -294,14 +296,13 @@ int bm_visual_main(void){
         BeginTextureMode(screen);
             DrawFPS(10, 10);
             if (actualRep.helpActive) help();
-            rmviDrawCarthesianFull(carthesian,20,5,WHITE,true,false);
-            rmviDrawLegend(carthesian,&legend);
+            rmviDrawCartesianFull(&cartesian,20,5,WHITE,true,false);
             for(int i=0; i<4; i++){
-                rmviDrawList2(carthesian , years, distList[i], min(annee[i],MEMORY), true, colors[i]);
+                rmviDrawList2(&cartesian , years, distList[i], min(annee[i],MEMORY), true, colors[i]);
             }
         EndTextureMode();
         rmviDraw();
-        if (RECORDING) addImageToffmpeg(ffmpeg);
+        if (recording) addImageToffmpeg(ffmpeg);
         countFrame++;
     }
     return 0;
@@ -310,6 +311,7 @@ int bm_visual_main(void){
 int bm_visual_initialisation(void) {
     // Initialize raylib and audio
     char audioPath[256];
+    char videoPath[256];
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     int screenWidth = WIDTH;
     int screenHeight = HEIGHT;
@@ -318,8 +320,11 @@ int bm_visual_initialisation(void) {
     rlEnableDepthTest();
     screen = LoadRenderTexture(GetScreenWidth(), GetScreenHeight());
     rmviGetCustomFont(FONT_PATH, 80);
-    if (RECORDING) ffmpeg = ffmpeg_start_rendering(GetScreenWidth(), GetScreenHeight(), FPS);
-    if (AUDIO_RECORDING) {
+    if (recording) {
+        snprintf(videoPath, sizeof(videoPath), "%s/%s.mp4", OUTPUT_DIR, version);
+        ffmpeg = ffmpeg_start_rendering(GetScreenWidth(), GetScreenHeight(), FPS, videoPath);
+    }
+    if (recording) {
         InitAudioDevice();                                      // Initialise audio
         snprintf(audioPath, sizeof(audioPath), "%s/%s.wav", OUTPUT_DIR, version);
         printf("Audio will be recorded to: %s\n", audioPath);
@@ -332,7 +337,7 @@ int bm_visual_uninitialisation(void) {
     CloseWindow();  // Close window and OpenGL context
     UnloadFont(mathFont);
     UnloadRenderTexture(screen);
-    if (RECORDING) ffmpeg_end_rendering(ffmpeg);
+    if (recording) ffmpeg_end_rendering(ffmpeg);
     return 0;  // Success
 }
 
@@ -349,7 +354,9 @@ void addImageToffmpeg(void *ffmpeg) {
     UnloadImage(image);
 }
 int main(int argc, char *argv[]){
-    version = (argc > 1) ? argv[1] : "0"; 
+    //On utilise un format de fonction qui prend 0 1 pour l'enregistrement, si 1 alors ensuite on donne le noms
+    recording = (argc >= 2) ? (strcmp(argv[1], "1") == 0) : false;
+    version = (argc >= 3) ? argv[2] : "output"; 
     bm_visual_initialisation();
     printf("Audio ready: %d\n", IsAudioDeviceReady());
     bm_visual_main();

@@ -15,12 +15,9 @@ typedef struct {
 static LPSTR GetLastErrorAsString(void)
 {
     // https://stackoverflow.com/questions/1387064/how-to-get-the-error-message-from-the-error-code-returned-by-getlasterror
-
     DWORD errorMessageId = GetLastError();
     assert(errorMessageId != 0);
-
     LPSTR messageBuffer = NULL;
-
     DWORD size =
         FormatMessage(
             FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, // DWORD   dwFlags,
@@ -49,7 +46,7 @@ static BOOL WriteAll(HANDLE h, const void* buf, DWORD bytesTotal) {
     return TRUE;
 }
 
-FFMPEG *ffmpeg_start_rendering(size_t width, size_t height, size_t fps)
+FFMPEG *ffmpeg_start_rendering(size_t width, size_t height, size_t fps, const char *version)
 {
     printf("Starting ffmpeg rendering with width: %zu, height: %zu, fps: %zu\n", width, height, fps);
     HANDLE pipe_read;
@@ -85,13 +82,13 @@ FFMPEG *ffmpeg_start_rendering(size_t width, size_t height, size_t fps)
     char cmd_buffer[2048];
     // NOTE: -vf vflip flips the frame; we now always write in top->bottom order.
     // If your data is BGRA, change rgba->bgra here and in ffmpeg_send_frame().
-     snprintf(cmd_buffer, sizeof(cmd_buffer),
+    snprintf(cmd_buffer, sizeof(cmd_buffer),
         "ffmpeg.exe -loglevel verbose -y "
         "-f rawvideo -pix_fmt rgba -s %dx%d -r %d -i - "
         "-vf vflip "
         "-c:v hevc_qsv -preset veryfast -global_quality 28 "
-        "-pix_fmt yuv420p output.mp4",
-        (int)width, (int)height, (int)fps);
+        "-pix_fmt yuv420p %s",
+        (int)width, (int)height, (int)fps, version);
 
     BOOL bSuccess = CreateProcess(
         NULL, cmd_buffer, NULL, NULL, TRUE, 0, NULL, NULL, &siStartInfo, &piProcInfo);

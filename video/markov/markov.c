@@ -1,6 +1,9 @@
 #include "config.h"
+#include <stdio.h>
 
 int spaceCount;
+bool recording;
+const char *version;
 void processInput();
 int bm_visual_initialisation(void) {
     // Initialize raylib
@@ -23,9 +26,11 @@ int bm_visual_uninitialisation(void) {
 int bm_visual_main(void)
 {   
     rmviGetCustomFont(FONT_PATH, 80);
-    void *ffmpeg = NULL; 
-    if (RECORDING) {
-        ffmpeg = ffmpeg_start_rendering(GetScreenWidth(), GetScreenHeight(), FPS);
+    char videoPath[256];
+    void *ffmpeg = NULL;
+    if (recording) {
+        snprintf(videoPath, sizeof(videoPath), "%s/%s.mp4", OUTPUT_DIR, version);
+        ffmpeg = ffmpeg_start_rendering(GetScreenWidth(), GetScreenHeight(), FPS, videoPath);
     }
     int countFrame = 0;
     int frameInit = -1;
@@ -141,7 +146,7 @@ int bm_visual_main(void)
         EndDrawing();
         //----------------------------------------------------------------------------------
         
-        if (RECORDING) {
+        if (recording) {
             Image image = LoadImageFromTexture(screen.texture);
             ffmpeg_send_frame_flipped(ffmpeg, image.data, GetScreenWidth(), GetScreenHeight());
             UnloadImage(image);
@@ -151,12 +156,18 @@ int bm_visual_main(void)
     UnloadFont(mathFont);
     UnloadRenderTexture(screen);
     CloseAudioDevice();
-    if (RECORDING) ffmpeg_end_rendering(ffmpeg);
+    if (recording) ffmpeg_end_rendering(ffmpeg);
     return 0;
 }
 
-int main(void){
+int main(int argc, char *argv[]){
+    /*
+    On utilise un format de fonction qui prend 0 1 pour l'enregistrement, si 1 alors ensuite on donne le noms
+    */
+    recording = (argc >= 2) ? (strcmp(argv[1], "1") == 0) : false;
+    version = (argc >= 3) ? argv[2] : "output";
     bm_visual_initialisation();
+    printf("Audio ready: %d\n", IsAudioDeviceReady());
     bm_visual_main();
     bm_visual_uninitialisation();
     return 0;

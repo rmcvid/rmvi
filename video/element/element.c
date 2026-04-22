@@ -17,6 +17,7 @@
 #include <time.h>
 
 Image image;
+bool recording;
 
 typedef struct {
     int actualyear;
@@ -367,6 +368,7 @@ const char *version;
 int bm_visual_initialisation(void) {
     // Initialize raylib
     char audioPath[256];
+    char videoPath[256];
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     int screenWidth = WIDTH;
     int screenHeight = HEIGHT;
@@ -374,7 +376,10 @@ int bm_visual_initialisation(void) {
     SetTargetFPS(FPS); 
     screen = LoadRenderTexture(GetScreenWidth(), GetScreenHeight());
     rmviGetCustomFont(FONT_PATH, 80);
-    if (RECORDING) ffmpeg = ffmpeg_start_rendering(GetScreenWidth(), GetScreenHeight(), FPS);
+    if (recording) {
+        snprintf(videoPath, sizeof(videoPath), "%s/%s.mp4", OUTPUT_DIR, version);
+        ffmpeg = ffmpeg_start_rendering(GetScreenWidth(), GetScreenHeight(), FPS, videoPath);
+    }
     if (AUDIO_RECORDING) {
         InitAudioDevice();                                      // Initialise audio
         snprintf(audioPath, sizeof(audioPath), "%s/%s.wav", OUTPUT_DIR, version);
@@ -388,7 +393,7 @@ int bm_visual_uninitialisation(void) {
     CloseWindow();  // Close window and OpenGL context
     UnloadFont(mathFont);
     UnloadRenderTexture(screen);
-    if (RECORDING) ffmpeg_end_rendering(ffmpeg);
+    if (recording) ffmpeg_end_rendering(ffmpeg);
     return 0;  // Success
 }
 void rmviDraw(){
@@ -479,7 +484,7 @@ int bm_visual_main(void)
             
         EndTextureMode();
         rmviDraw();
-        if (RECORDING) addImageToffmpeg(ffmpeg);
+        if (recording) addImageToffmpeg(ffmpeg);
         framecount++;
     }
     rmviAnime2Free(grec);
@@ -492,8 +497,13 @@ int bm_visual_main(void)
 
 
 int main(int argc, char *argv[]){
-    version = (argc > 1) ? argv[1] : "0"; 
+    /*
+    On utilise un format de fonction qui prend 0 1 pour l'enregistrement, si 1 alors ensuite on donne le noms
+    */
+    recording = (argc >= 2) ? (strcmp(argv[1], "1") == 0) : false;
+    version = (argc >= 3) ? argv[2] : "output";
     bm_visual_initialisation();
+    printf("Audio ready: %d\n", IsAudioDeviceReady());
     bm_visual_main();
     bm_visual_uninitialisation();
     return 0;

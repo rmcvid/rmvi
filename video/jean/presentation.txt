@@ -1,0 +1,20 @@
+Tout mouvement non perturbée dessine une ligne droite//
+On parle de mouvement rectiligne uniforme
+
+Les pertubations qu'on peut apporté se traduit par une accélération
+
+L'accélération est la modification d'une vitesse.
+//// 
+/begin(equation)
+/bar{a} / = / /frac{d/bar{v}}{dt}
+/end(equation)
+
+Celle ci peut être en intensité comme en  voiture ou on roule de plus en plus vite
+
+Ou en direction.//
+Pour faire une analogie avec le vélo cela revient à tourner le guidon.
+
+Si le changement de direction est constant à travers le temps, //
+on parle de mouvement circulaire uniforme.
+
+Toujours avec le vélo, cela revient à garder l'inclinaison du guidon à la même position.

@@ -35,20 +35,10 @@ typedef struct{
     int capacity;
 }rmviTokenList;
 
-// the origin defines the center of the plot; the scale defines the unit scale and the size defines arrows length
-typedef struct {
-    Vector2 origin;         // position of the carthesian
-    Vector2 unit;           // unit
-    Vector2 size;           // size of the carthesian
-    Vector2 sizeUnit;       // size of a square grid
-    char xlabel[32];
-    char ylabel[32];
-    char title[512];
-    bool legend;
-    float thikness;
-    float sizeText;
-    float spacing;
-} rmviCarthesian;
+// origin: center of the plot in screen pixels
+// halfSizePx: half-size of the visible plot in screen pixels
+// gridStepUnits: value represented by one grid step on each axis
+// gridStepPx: distance between two grid lines in screen pixels
 
 typedef struct{
     Color *color;
@@ -58,6 +48,39 @@ typedef struct{
     Vector2 position;
     float sizeText;
 } rmviLegend;
+
+typedef struct {
+    Vector2 origin;
+    Vector2 halfSizePx;
+    Vector2 gridStepUnits;
+    Vector2 gridStepPx;
+    char xlabel[32];
+    char ylabel[32];
+    char title[512];
+    float thickness;
+    float sizeText;
+    float spacing;
+    float alphaGrid;                    // alpha value for grid lines
+    rmviLegend *legendData;
+} rmviCartesian;
+
+typedef struct {
+    Vector2 origin;
+    float halfLength;                   // in pixels, radius of the polar plot
+    float gridStepUnits;                // value represented by one grid step on each axis (radius and angle)
+    float gridStepPx;                   // distance between two grid lines in screen pixels (radius and angle)  
+    int nTheta;                         // number of angular grid lines
+    char xlabel[32];
+    char ylabel[32];
+    char title[512];
+    float thickness;
+    float sizeText;
+    float spacing;
+    float alphaGrid;                    // alpha value for grid lines
+    rmviLegend *legendData;
+} rmviPolar;
+
+
 
 typedef struct {
     // ici la question de la mémoire est à regarder
@@ -264,23 +287,39 @@ void rmviDrawGraphSquareWrite(rmviGraph *graph, float leftRatio, const char **li
 
 // ----------------------------- CARTHESIAN AND ARROWS -----------------------------
 void rmviDrawArrow2(Vector2 start, Vector2 end, float arrowSize, float ratio, Color color);
-rmviCarthesian rmviGetCarthesian(Vector2 origin, Vector2 size, Vector2 unit);
-void rmviSetCarthesianAxesLabel(rmviCarthesian *carthesian,const char *xlabel,const char* ylabel);
-void rmviSetCarthesianTitle(rmviCarthesian *carthesian,const char *title);
+rmviCartesian rmviGetCartesian(Vector2 origin, Vector2 halfSizePx, Vector2 gridStepUnits);
+void rmviSetCartesianAxesLabel(rmviCartesian *cartesian, const char *xlabel, const char *ylabel);
+void rmviSetCartesianTitle(rmviCartesian *cartesian, const char *title);
+void rmviSetCartesianGridStepPx(rmviCartesian *cartesian, Vector2 gridStepPx);
+Vector2 rmviCartesianToScreen(const rmviCartesian *cartesian, Vector2 point);
 rmviLegend rmviGetLegend(int capacity);
 void rmviAddLegend(rmviLegend *legend, Color color, const char *name);
-void rmviWriteTitle(rmviCarthesian carthesian,float sizeText, float spacing,Font font,Color color);
-void rmviWriteTitleClassic(rmviCarthesian carthesian);
-void rmviDrawLegend(rmviCarthesian carthesian, rmviLegend *legend);
-void rmviDrawCarthesianFull(rmviCarthesian carthesian, float arrowSize, float ratio, Color color, bool drawTicks, bool drawLines);
-void rmviUpdateCarthesian(rmviCarthesian *carthesian, Vector2 origin, Vector2 unit, Vector2 size);
-void rmviWriteAxis(rmviCarthesian carthesian,float sizeText, float spacing,Font font,Color color);
-void rmviDrawTick(rmviCarthesian carthesian, float length,float thinkess, Color color);
-void rmviDrawGrids(rmviCarthesian carthesian, Color color);
-void rmviDrawFunction(rmviCarthesian carthesian, MathFunction fct, Color color);
-void rmviDraw2Parametric(rmviCarthesian carthesian,float fx(float,float),float fy(float,float),float radius, float tMin, float tMax, int n, Color color);
-void rmviDrawTrigo(rmviCarthesian carthesian, float x, float y, Color color, float radius);
-void rmviDrawList2(rmviCarthesian carthesian, const float *listX, const float *listY, int count, bool line, Color color);
+void rmviWriteTitle(const rmviCartesian *cartesian, float sizeText, float spacing, Font font, Color color);
+void rmviWriteTitleClassic(const rmviCartesian *cartesian);
+void rmviDrawLegend(rmviLegend *legend, Vector2 origin, Vector2 halfSizePx);
+void rmviDrawCartesianFull(const rmviCartesian *cartesian, float arrowSize, float ratio, Color color, bool drawTicks, bool drawLines);
+void rmviUpdateCartesian(rmviCartesian *cartesian, Vector2 origin, Vector2 gridStepUnits, Vector2 halfSizePx);
+void rmviWriteAxis(const rmviCartesian *cartesian, float sizeText, float spacing, Font font, Color color);
+void rmviDrawTick(const rmviCartesian *cartesian, float length, float thickness, Color color);
+void rmviDrawGrids(const rmviCartesian *cartesian, Color color);
+void rmviDrawFunction(const rmviCartesian *cartesian, MathFunction fct, Color color);
+void rmviDraw2Parametric(const rmviCartesian *cartesian, float fx(float,float), float fy(float,float), float radius, float tMin, float tMax, int n, Color color);
+void rmviDrawTrigo(const rmviCartesian *cartesian, float x, float y, Color color, float radius);
+void rmviDrawList2(const rmviCartesian *cartesian, const float *listX, const float *listY, int count, bool line, Color color);
+rmviPolar rmviGetPolar(Vector2 origin, float halfLength, float gridStepUnits);
+void rmviSetPolarAxesLabel(rmviPolar *polar, const char *xlabel, const char *ylabel);
+void rmviSetPolarTitle(rmviPolar *polar, const char *title);
+void rmviSetPolarGridStepPx(rmviPolar *polar, float gridStepPx);
+Vector2 rmviPolarToScreen(const rmviPolar *polar, Vector2 point);
+void rmviWriteTitlePolar(const rmviPolar *polar, float sizeText, float spacing, Font font, Color color);
+void rmviWriteTitleClassicPolar(const rmviPolar *polar);
+void rmviWriteAxisPolar(const rmviPolar *polar, float sizeText, float spacing, Font font, Color color);
+void rmviWriteAxisClassicPolar(const rmviPolar *polar);
+void rmviDrawTickPolar(const rmviPolar *polar, float length, float thickness, Color color);
+void rmviDrawGridsPolar(const rmviPolar *polar, Color color);
+void rmviDrawPolarFull(const rmviPolar *polar, float arrowSize, float ratio, Color color, bool drawTicks, bool drawGrids);
+void rmviUpdatePolar(rmviPolar *polar, Vector2 origin, float gridStepUnits, float halfLength);
+void rmviDrawListPolar(const rmviPolar *polar, const float *listR, const float *listTheta, int count, bool line, Color color);
 void rmviPositioningTree(rmviTree *tree,float spaceTreeRatioX, float spaceTreeRatioY);
 
 

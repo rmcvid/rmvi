@@ -16,6 +16,7 @@ typedef enum {
     TOKEN_RBRACKET,
     TOKEN_BREAK,
     TOKEN_FRAC,
+    TOKEN_BAR,
     TOKEN_ITEM,
     TOKEN_BEGIN_ITEMIZE,
     TOKEN_END_ITEMIZE,
@@ -92,12 +93,16 @@ typedef struct RenderBox {
     Font font;
     Color color;
     bool addSpace;
+    float breakRatio;
+    bool breakBefore;
+    bool breakAfter;
 } RenderBox;
 
 typedef struct {
     Color color;
     float sizeText;
     float spacing;
+    float spaceSize;
     float interline;
     float widthMax;
     bool addSpace;

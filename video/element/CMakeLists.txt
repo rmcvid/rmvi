@@ -15,7 +15,7 @@ target_compile_definitions(element
     IMAGE_PATH=\"${CMAKE_CURRENT_SOURCE_DIR}/Image/\"
 )
 
-set(OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/output")
+set(OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/output/")
 add_compile_definitions(OUTPUT_DIR="${OUTPUT_DIR}")
 
 

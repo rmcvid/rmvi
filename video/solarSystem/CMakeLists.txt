@@ -6,6 +6,8 @@ add_executable(diffEarth
   diffEarth.c
 )
 
+set(OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/output/")
+
 foreach(tgt solarSystem diffEarth)
   target_include_directories(${tgt}
     PRIVATE

@@ -116,6 +116,27 @@ typedef struct {
 static TextureList g_texCache[128] = {0};
 static int g_texCacheCount = 0;
 
+static float rmviGetWidthLimit(const State *state){
+    if (state && state->widthMax > 0.0f) return state->widthMax;
+    return RATIO_LEN_TEXT;
+}
+
+static void rmviShiftChildrenX(RenderBox *box, int start, int end, float shiftX){
+    if (!box || shiftX == 0.0f) return;
+    for (int i = start; i <= end; i++){
+        box->items[i].pos.x += shiftX;
+    }
+}
+
+static void rmviFinalizeChildLine(RenderBox *box, int lineStart, int lineEnd, float lineWidth, float widthLimit, bool centerLines){
+    if (!box || lineStart < 0 || lineEnd < lineStart) return;
+    if (centerLines && lineWidth < widthLimit){
+        rmviShiftChildrenX(box, lineStart, lineEnd, 0.5f * (widthLimit - lineWidth));
+    }
+    box->width = max(box->width, centerLines ? max(lineWidth, widthLimit) : lineWidth);
+    box->items[lineEnd].isEndLine = true;
+}
+
 static Texture2D *rmviGetTexturePtrCached(const char *path){
     for (int i = 0; i < g_texCacheCount; i++) {
         if (g_texCache[i].used && strcmp(g_texCache[i].path, path) == 0) {
@@ -158,6 +179,8 @@ static int isAlphaNum(unsigned char c){
 int tokenTypeCommand(Token token){
     if (strcmp(token.text, "/frac") == 0)
         return TOKEN_FRAC;
+    else if (strcmp(token.text, "/bar") == 0)
+        return TOKEN_BAR;
     else if(strcmp(token.text,"/item") == 0)
         return TOKEN_ITEM;
     else if(strcmp(token.text,"/break") == 0)
@@ -183,15 +206,16 @@ int rmviTokenizeLatex(const char *latex, Token *tokens, int maxTokens){
     if(latex == NULL) return 0;
     while (latex[i] && count < maxTokens){
         char c = latex[i];
+        bool isCommandPrefix = (c == '/' || c == '\\');
         // Ignore spaces
         if (c == ' ') {
             i++;
             continue;
         }
         // COMMAND: \xxxx
-        else if (c == '/') {
+        else if (isCommandPrefix) {
             int j = 0;
-            if(latex[i+1] == '/'){
+            if(latex[i+1] == c){
                 tokens[count++].type = TOKEN_NEXTLINE;
                 i = i + 2;
                 continue;
@@ -205,7 +229,8 @@ int rmviTokenizeLatex(const char *latex, Token *tokens, int maxTokens){
                 continue;
             }
             else{
-                tokens[count].text[j++] = latex[i++]; // on prend le premier d'office
+                tokens[count].text[j++] = '/'; // normalise \cmd et /cmd vers /cmd
+                i++;
                 //ici
                 while (( isAlphaNum(latex[i]) || isOperator(latex[i]) ) && j < TOKEN_TEXT_MAX - 1) {
                     tokens[count].text[j++] = latex[i++];
@@ -229,7 +254,7 @@ int rmviTokenizeLatex(const char *latex, Token *tokens, int maxTokens){
             continue;
         }
         else if(c == '['){
-            tokens[count++] = (Token){ TOKEN_RBRACKET, "[" };
+            tokens[count++] = (Token){ TOKEN_LBRACKET, "[" };
             i++;
             continue;
         }
@@ -276,6 +301,7 @@ int rmviTokenizeLatex(const char *latex, Token *tokens, int maxTokens){
 State rmviGetState(float sizeText,float spacing,float interline,float widthMax,bool addSpace,int miseEnPage, Font font, Color color){
     State state = {0};
     state.sizeText = sizeText;
+    state.spaceSize = sizeText * RATIO_SPACE;
     state.spacing = spacing;
     state.interline = interline;
     state.widthMax = widthMax;
@@ -299,6 +325,7 @@ RenderBox getRenderBox(State *state){
     RenderBox box = {0};
     box.color = state->color;
     box.font = state->font;
+    box.size = state->sizeText;
     box.sizeText = state->sizeText;
     box.spacing = state->spacing;
     box.addSpace = state->addSpace;
@@ -371,34 +398,60 @@ static ImgOpts rmviParseImgOpts(const char *s){
     }
     return o;
 }
-void rmviFixChildPositionNext(RenderBox *box, State *state){
+static void rmviFixChildPositionNextEx(RenderBox *box, State *state, bool centerLines){
+    if (!box || !state) return;
     Vector2 cursor = Vector2Zero();
-    float height = box->size;
-    box->height += height;
+    float widthLimit = rmviGetWidthLimit(state);
+    float lineBaseSize = (box->size > 0.0f) ? box->size : state->sizeText;
+    float lineBreakRatio = (box->breakRatio > 0.0f) ? box->breakRatio : INTERLIGNE;
+    float lineHeight = lineBaseSize;
+    int lineStart = -1;
+    int lineEnd = -1;
+    box->width = 0.0f;
+    box->height = 0.0f;
     for(int i = 0; i < box->itemCount; i++){
-        height = max(box->items[i].height,height);
-        if(cursor.x + box->items[i].width > state->widthMax ){
-            box->items[i].isEndLine = true;
-            rmviLineSkip(&cursor,INTERLIGNE, box->size, height);
-            box->height += height + INTERLIGNE*box->size;
-            height = box->size;
+        RenderBox *child = &box->items[i];
+        child->isEndLine = false;
+        if (child->token.type == TOKEN_DISPLACE){
+            if (lineStart >= 0){
+                rmviFinalizeChildLine(box, lineStart, lineEnd, cursor.x, widthLimit, centerLines);
+                box->height = max(box->height, cursor.y + lineHeight);
+            }
+            rmviLineSkip(&cursor, INTERLIGNE_ITEM, lineBaseSize, lineHeight);
+            lineHeight = lineBaseSize;
+            lineStart = -1;
+            lineEnd = -1;
+            continue;
         }
-        if( box->items[i].hasToken && box->items[i].token.type == TOKEN_DISPLACE){
-            box->items[i].token = (Token) {0};
-            box->items[i].isEndLine = true;
-            rmviLineSkip(&cursor,INTERLIGNE_ITEM, box->size, height);
-            box->height += height + INTERLIGNE*box->size; ;
-            height = box->size;
+        if (lineStart >= 0 && cursor.x + child->width > widthLimit){
+            rmviFinalizeChildLine(box, lineStart, lineEnd, cursor.x, widthLimit, centerLines);
+            box->height = max(box->height, cursor.y + lineHeight);
+            rmviLineSkip(&cursor, lineBreakRatio, lineBaseSize, lineHeight);
+            lineHeight = lineBaseSize;
+            lineStart = -1;
+            lineEnd = -1;
         }
-        else {
-            box->items[i].pos.x += cursor.x;
-            box->items[i].pos.y += cursor.y;
-            height = max(height,box->items[i].height);
-            cursor.x += box->items[i].width;
-            if(box->width < RATIO_LEN_TEXT) box->width +=box->items[i].width;
-            else box->width = RATIO_LEN_TEXT;
+        child->pos.x += cursor.x;
+        child->pos.y += cursor.y;
+        cursor.x += child->width;
+        lineHeight = max(lineHeight, child->height);
+        if (lineStart < 0){
+            lineStart = i;
         }
+        lineEnd = i;
     }
+    if (lineStart >= 0){
+        rmviFinalizeChildLine(box, lineStart, lineEnd, cursor.x, widthLimit, centerLines);
+        box->height = max(box->height, cursor.y + lineHeight);
+        box->items[lineEnd].isEndLine = false;
+    }
+    else if (box->height <= 0.0f){
+        box->height = lineBaseSize;
+    }
+}
+
+void rmviFixChildPositionNext(RenderBox *box, State *state){
+    rmviFixChildPositionNextEx(box, state, false);
 }
 
 
@@ -655,13 +708,14 @@ RenderBox rmviBuildBrace(Token *tokens, int *index, int tokenCount, State *state
 }
 
 
-void rmviFixChildPositionUnder(RenderBox *box, float ratio){
+void rmviFixChildPositionUnder(RenderBox *box, State *state, float ratio){
     Vector2 cursor =Vector2Zero();
+    float widthLimit = rmviGetWidthLimit(state);
     for(int i = 0; i < box->itemCount; i++){
         box->items[i].pos.y += cursor.y;
         cursor.y += box->items[i].height + ratio*box->items[i].size;
         box->height += box->items[i].height + ratio*box->items[i].size;
-        box->width = min( max(box->width,box->items[i].width),RATIO_LEN_TEXT);
+        box->width = min(max(box->width, box->items[i].width), widthLimit);
     }
 
 }
@@ -765,82 +819,171 @@ RenderBox rmviBuildBreak(Token *tokens,int tokenCount, int *index){
     return box;
 }
 
-RenderBox rmviMain2Box(Token *tokens,int tokenCount,State *state, int *index){
-    // mettre un switch case
+RenderBox rmviBuildBar(Token *tokens, int tokenCount, int *index, State *state){
     RenderBox box = getRenderBox(state);
-    Vector2 cursor = Vector2Zero();
-    if (tokens[*index].type == TOKEN_FRAC){
-        (*index)++; // skip \frac
+    RenderBox child = {0};
+    RenderBox lineBox = getRenderBox(state);
+    float lineThickness = max(1.0f, RATIO_LINE * state->sizeText);
+    float barGap = 0.12f * state->sizeText;
+    (*index)++;
+    if ((*index) >= tokenCount) return box;
+    if (tokens[*index].type == TOKEN_LBRACE){
+        bool oldSpace = state->addSpace;
+        state->addSpace = false;
+        child = rmviBuildBrace(tokens, index, tokenCount, state);
+        rmviFixChildPositionNext(&child, state);
+        state->addSpace = oldSpace;
+    }
+    else{
+        bool oldSpace = state->addSpace;
+        state->addSpace = false;
+        child = rmviMain2Box(tokens, tokenCount, state, index);
+        rmviFixChildPositionNext(&child, state);
+        state->addSpace = oldSpace;
+    }
+    lineBox.isLine = true;
+    lineBox.size = lineThickness;
+    lineBox.width = child.width;
+    lineBox.pos = (Vector2){0.0f, 0.0f};
+    child.pos.y += lineBox.pos.y; // lineThickness + barGap
+    box.itemCount = 2;
+    box.items = MemAlloc(sizeof(RenderBox) * box.itemCount);
+    box.items[0] = child;
+    box.items[1] = lineBox;
+    box.width = child.width;
+    box.height = child.height;
+    return box;
+}
+
+RenderBox rmviBuildBeginEquation(Token *tokens, int tokenCount, int *index, State *state){
+    RenderBox box = getRenderBox(state);
+    RenderBox *children = NULL;
+    int childCap = 0;
+    int childCount = 0;
+    int depth = 1;
+    (*index)++;
+    box.breakRatio = INTERLIGNE_ITEM;
+    box.breakBefore = true;
+    box.breakAfter = true;
+    while (*index < tokenCount && depth > 0){
+        if (tokens[*index].type == TOKEN_BEGIN_EQUATION){
+            depth++;
+            (*index)++;
+            continue;
+        }
+        if (tokens[*index].type == TOKEN_END_EQUATION){
+            depth--;
+            (*index)++;
+            continue;
+        }
+        RenderBox child = rmviMain2Box(tokens, tokenCount, state, index);
+        RMVI_PUSH(children, childCount, childCap, RenderBox, child);
+    }
+    box.items = MemAlloc(sizeof(RenderBox) * childCount);
+    memcpy(box.items, children, sizeof(RenderBox) * childCount);
+    box.itemCount = childCount;
+    free(children);
+    rmviFixChildPositionNextEx(&box, state, true);
+    return box;
+}
+
+static RenderBox rmviBuildSimpleTokenBox(Token *tokens, int tokenCount, State *state, int *index){
+    RenderBox box = getRenderBox(state);
+    bool old = state->addSpace;
+    Vector2 size = Vector2Zero();
+    state->addSpace = old && ((*index) < (tokenCount - 1)) && (tokens[*index + 1].type != TOKEN_SUB);
+    size = rmviMeasureToken(&tokens[*index], state);
+    state->addSpace = old;
+    box.width = size.x;
+    box.height = size.y;
+    box.token = tokens[*index];
+    box.hasToken = true;
+    box.size = state->sizeText;
+    (*index)++;
+    return box;
+}
+
+RenderBox rmviMain2Box(Token *tokens,int tokenCount,State *state, int *index){
+    RenderBox box = getRenderBox(state);
+    switch (tokens[*index].type){
+    case TOKEN_FRAC: {
         State copyState = *state;
-        copyState.addSpace = false;
-        box = rmviBuildFrac(tokens, tokenCount,index,&copyState, true);
-    }
-    else if(tokens[*index].type == TOKEN_BREAK){
-        box = rmviBuildBreak(tokens, tokenCount,index);
-    }
-    else if (tokens[*index].type == TOKEN_BEGIN_ITEMIZE){
-        box = rmviBuildBeginItemize(tokens, tokenCount,index,state);
-        rmviFixChildPositionUnder(&box,1.0f);
-    }
-    else if(tokens[*index].type == TOKEN_LOAD_IMAGE){
         (*index)++;
+        copyState.addSpace = false;
+        box = rmviBuildFrac(tokens, tokenCount, index, &copyState, true);
+        break;
+    }
+    case TOKEN_BAR:
+        box = rmviBuildBar(tokens, tokenCount, index, state);
+        break;
+    case TOKEN_BREAK:
+        box = rmviBuildBreak(tokens, tokenCount,index);
+        break;
+    case TOKEN_BEGIN_ITEMIZE:
+        box = rmviBuildBeginItemize(tokens, tokenCount,index,state);
+        rmviFixChildPositionUnder(&box, state, 1.0f);
+        break;
+    case TOKEN_BEGIN_EQUATION:
+        box = rmviBuildBeginEquation(tokens, tokenCount, index, state);
+        break;
+    case TOKEN_LOAD_IMAGE: {
         char *opts = NULL;
+        char *path = NULL;
         ImgOpts imgOpts = {0};
-        if (tokens[*index].text[0] == '[') {
+        (*index)++;
+        if ((*index) < tokenCount && tokens[*index].type == TOKEN_LBRACKET) {
             opts = rmviReadSymbolText(tokens, tokenCount, index, '[', ']');
             imgOpts = rmviParseImgOpts(opts);
             free(opts);
         }
-        char *path = rmviReadSymbolText(tokens, tokenCount, index,'{','}');
+        path = rmviReadSymbolText(tokens, tokenCount, index,'{','}');
         box.isImage = true;
         box.size = state->sizeText;
         box.texPtr = rmviGetTexturePtrCached(path);
         rmviBuildImageOpt(&box,imgOpts);
         free(path);
+        break;
     }
-    else if (tokens[*index].type == TOKEN_OTHER){
+    case TOKEN_OTHER:
         box = rmviBuildOther(tokens,tokenCount,index,state);
-    }
-    else if (tokens[*index].type == TOKEN_SPACE){
+        break;
+    case TOKEN_SPACE:
         box = rmviBuildSpace(tokens,tokenCount,index,state);
-    }
-    else if( tokens[*index].type == TOKEN_SUB){
-        (*index)++;
+        break;
+    case TOKEN_SUB: {
         State copyState = copyStateRatio(state,RATIO_INDEX);
+        (*index)++;
         box = rmviBuildSub(tokens,tokenCount,index,&copyState);
         rmviFixChildPositionNext(&box,state);
-        
-        // fonction qui place les box à la bonne place
+        break;
     }
-    else if (tokens[*index].type == TOKEN_LBRACE){
+    case TOKEN_LBRACE:
         box = rmviBuildBrace(tokens,index,tokenCount,state);
-    }
-    else if(tokens[*index].type == TOKEN_NEXTLINE){ //ici
+        break;
+    case TOKEN_NEXTLINE:
         box.token = displaceToken;
         box.size = state->sizeText;
         (*index)++;
-    }
-    else{
-        // met un espace après un mot si n'est pas après _ ou ^, et que ce n'est pas le dernier mot
-        bool old = state->addSpace;
-        state->addSpace =  old && (tokens[*index + 1].type != TOKEN_SUB) && ((*index) < (tokenCount-1)) ;
-        Vector2 size = rmviMeasureToken(&tokens[*index], state);
-        state->addSpace = old;
-        box.pos.x = cursor.x;
-        box.pos.y = cursor.y;
-        box.width = size.x;
-        box.height = size.y;
-        box.token = tokens[*index];
-        box.hasToken = true;
-        box.size = state->sizeText;
-        cursor.x += size.x;
+        break;
+    case TOKEN_SYMBOL:
+    case TOKEN_OPERATOR:
+        box = rmviBuildSimpleTokenBox(tokens, tokenCount, state, index);
+        break;
+    case TOKEN_END_ITEMIZE:
+    case TOKEN_END_EQUATION:
+    case TOKEN_RBRACE:
+    case TOKEN_RBRACKET:
         (*index)++;
+        break;
+    default:
+        box = rmviBuildSimpleTokenBox(tokens, tokenCount, state, index);
+        break;
     }
     return box;
 }
 
 void rmviFixBoxPosition(RenderBox *boxes, RenderBox *box, int *index, int *count, Vector2 *cursor){
-    if (box->hasToken && box->token.type == TOKEN_DISPLACE){
+    if (box->token.type == TOKEN_DISPLACE){
         rmviLineSkip(cursor,INTERLIGNE_ITEM, box->size, box->size);
         box->pos = Vector2Add( box->pos, *cursor);
         cursor->y += box->height; 
@@ -859,25 +1002,39 @@ void rmviLineSkip(Vector2* cursor, float ratio, float sizeText, float height){
 int rmviBuildRenderBoxes(Token *tokens,int tokenCount,RenderBox *boxes,State *state){
     Vector2 cursor = Vector2Zero();
     int count = 0;
-    int oldIndex = 0;
+    float widthLimit = rmviGetWidthLimit(state);
     float height = state->sizeText;
     RenderBox box = {0};
     for (int index = 0; index < tokenCount; ){
         if(count>0) height = max(height,boxes[count-1].height);
-        if(cursor.x > RATIO_LEN_TEXT ){
-            rmviLineSkip(&cursor,INTERLIGNE, state->sizeText,height);
-            if (count !=0) boxes[count-1].isEndLine = true;
-            height = state->sizeText;
-        }
         if(tokens[index].type == TOKEN_NEXTLINE){
             if (count !=0) boxes[count-1].isEndLine = true;
             rmviLineSkip(&cursor,INTERLIGNE, state->sizeText,height);
             (index)++;
             height = state->sizeText;
+            continue;
         }
         box = rmviMain2Box(tokens,tokenCount,state, &index);
+        if (box.breakBefore && cursor.x > 0.0f && count != 0){
+            float breakRatio = (box.breakRatio > 0.0f) ? box.breakRatio : INTERLIGNE;
+            boxes[count-1].isEndLine = true;
+            rmviLineSkip(&cursor, breakRatio, state->sizeText, height);
+            height = state->sizeText;
+        }
+        else if (cursor.x > 0.0f && cursor.x + box.width > widthLimit && count != 0){
+            boxes[count-1].isEndLine = true;
+            rmviLineSkip(&cursor, INTERLIGNE, state->sizeText, height);
+            height = state->sizeText;
+        }
         rmviFixBoxPosition(boxes, &box, &index, &count, &cursor);
         boxes[count++] = box;
+        height = max(height, box.height);
+        if (box.breakAfter){
+            float breakRatio = (box.breakRatio > 0.0f) ? box.breakRatio : INTERLIGNE;
+            boxes[count-1].isEndLine = true;
+            rmviLineSkip(&cursor, breakRatio, state->sizeText, height);
+            height = state->sizeText;
+        }
     }
     return count;
 }
@@ -1278,7 +1435,9 @@ float rmviCalcWidthLatexClassic(const char *latex){
     int boxCount = rmviBuildRenderBoxes(tokens, tokenCount, boxes, &state);
     rmviFloatList outList;
     rmviCalcWidthLine(boxes, boxCount,&outList);
-    return outList.data[0];
+    float width = rmviCalcLargestLine(&outList);
+    rmviFloatListFree(&outList);
+    return width;
 }
 float rmviCalcWidthLatex(const char *latex,  State *state){
     // ici on renvoie la longeur du premier, à modifier et mettre la plus grande non ?
@@ -1288,7 +1447,9 @@ float rmviCalcWidthLatex(const char *latex,  State *state){
     int boxCount = rmviBuildRenderBoxes(tokens, tokenCount, boxes, state);
     rmviFloatList outList;
     rmviCalcWidthLine(boxes, boxCount,&outList);
-    return outList.data[0];
+    float width = rmviCalcLargestLine(&outList);
+    rmviFloatListFree(&outList);
+    return width;
 }
 
 int isBlankLine(const char *line){

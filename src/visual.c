@@ -534,25 +534,118 @@ void rmviRotateText(const char *text, Vector2 position, Vector2 origin, float ro
     rlPopMatrix();
 }
 
-// Create a carthesian system with an origin, the size is the half long and unit place the size
-rmviCarthesian rmviGetCarthesian(Vector2 origin, Vector2 size, Vector2 unit) {
-    rmviCarthesian carthesian = {0};
-    carthesian.origin = origin;
-    carthesian.size = size;
-    carthesian.unit = unit;
-    carthesian.sizeUnit = (Vector2) {50,50};
-    carthesian.thikness = 3;
-    carthesian.sizeText = 40;
-    carthesian.spacing = 2;
-    return carthesian;
+// ----------------------------- Carthesian system and legend --------------------------------------------
+static Vector2 rmviCartesianVisibleRange(const rmviCartesian *cartesian) {
+    Vector2 range = {0};
+    if (!cartesian) return range;
+    if (cartesian->gridStepPx.x != 0.0f) {
+        range.x = cartesian->halfSizePx.x * cartesian->gridStepUnits.x / cartesian->gridStepPx.x;
+    }
+    if (cartesian->gridStepPx.y != 0.0f) {
+        range.y = cartesian->halfSizePx.y * cartesian->gridStepUnits.y / cartesian->gridStepPx.y;
+    }
+    return range;
 }
-void rmviSetCarthesianAxesLabel(rmviCarthesian *carthesian,const char *xlabel,const char* ylabel){
-    snprintf(carthesian->xlabel, sizeof(carthesian->xlabel), "%s",xlabel);
-    snprintf(carthesian->ylabel, sizeof(carthesian->ylabel), "%s",ylabel);
+
+static bool rmviCartesianPointVisible(const rmviCartesian *cartesian, Vector2 point) {
+    Vector2 range = rmviCartesianVisibleRange(cartesian);
+    return fabsf(point.x) <= range.x && fabsf(point.y) <= range.y;
 }
-void rmviSetCarthesianTitle(rmviCarthesian *carthesian,const char *title){
-    snprintf(carthesian->title, sizeof(carthesian->title), "%s",title);
+
+rmviCartesian rmviGetCartesian(Vector2 origin, Vector2 halfSizePx, Vector2 gridStepUnits) {
+    rmviCartesian cartesian = {0};
+    cartesian.origin = origin;
+    cartesian.halfSizePx = halfSizePx;
+    cartesian.gridStepUnits = gridStepUnits;
+    cartesian.gridStepPx = (Vector2){50, 50};
+    cartesian.thickness = 3;
+    cartesian.sizeText = 40;
+    cartesian.spacing = 2;
+    return cartesian;
 }
+
+void rmviSetCartesianAxesLabel(rmviCartesian *cartesian,const char *xlabel,const char* ylabel){
+    snprintf(cartesian->xlabel, sizeof(cartesian->xlabel), "%s ", xlabel);
+    snprintf(cartesian->ylabel, sizeof(cartesian->ylabel), "%s ", ylabel);
+}
+
+void rmviSetCartesianTitle(rmviCartesian *cartesian,const char *title){
+    snprintf(cartesian->title, sizeof(cartesian->title), "%s", title);
+}
+
+void rmviSetCartesianGridStepPx(rmviCartesian *cartesian, Vector2 gridStepPx) {
+    cartesian->gridStepPx = gridStepPx;
+}
+
+Vector2 rmviCartesianToScreen(const rmviCartesian *cartesian, Vector2 point) {
+    Vector2 screenPoint = cartesian->origin;
+    if (cartesian->gridStepUnits.x != 0.0f) {
+        screenPoint.x += point.x * cartesian->gridStepPx.x / cartesian->gridStepUnits.x;
+    }
+    if (cartesian->gridStepUnits.y != 0.0f) {
+        screenPoint.y -= point.y * cartesian->gridStepPx.y / cartesian->gridStepUnits.y;
+    }
+    return screenPoint;
+}
+
+static float rmviPolarVisibleRange(const rmviPolar *polar) {
+    float range = 0.0f;
+    if (!polar) return range;
+    if (polar->gridStepPx != 0.0f) {
+        range = polar->halfLength * polar->gridStepUnits / polar->gridStepPx;
+    }
+    return range;
+}
+
+static bool rmviPolarPointVisible(const rmviPolar *polar, Vector2 point) {
+    float range = rmviPolarVisibleRange(polar);
+    return point.x >= 0.0f && point.x <= range;
+}
+
+rmviPolar rmviGetPolar(Vector2 origin, float halfLength, float gridStepUnits) {
+    rmviPolar polar = {0};
+    polar.origin = origin;
+    polar.halfLength = halfLength;
+    polar.gridStepUnits = gridStepUnits;
+    polar.gridStepPx = 50.0f;
+    polar.thickness = 3;
+    polar.sizeText = 40;
+    polar.spacing = 2;
+    polar.nTheta = 12;
+    polar.alphaGrid = 0.5f;
+    return polar;
+}
+
+void rmviSetPolarAxesLabel(rmviPolar *polar,const char *xlabel,const char* ylabel){
+    snprintf(polar->xlabel, sizeof(polar->xlabel), "%s", xlabel);
+    snprintf(polar->ylabel, sizeof(polar->ylabel), "%s", ylabel);
+}
+
+void rmviSetPolarTitle(rmviPolar *polar,const char *title){
+    snprintf(polar->title, sizeof(polar->title), "%s", title);
+}
+
+void rmviSetPolarGridStepPx(rmviPolar *polar, float gridStepPx) {
+    polar->gridStepPx = gridStepPx;
+}
+
+Vector2 rmviPolarToScreen(const rmviPolar *polar, Vector2 point) {
+    float radiusPx = 0.0f;
+    if (polar->gridStepUnits != 0.0f) {
+        radiusPx = point.x * polar->gridStepPx / polar->gridStepUnits;
+    }
+    return (Vector2){
+        polar->origin.x + radiusPx * cosf(point.y),
+        polar->origin.y - radiusPx * sinf(point.y)
+    };
+}
+
+void rmviUpdatePolar(rmviPolar *polar, Vector2 origin, float gridStepUnits, float halfLength) {
+    polar->origin = origin;
+    polar->gridStepUnits = gridStepUnits;
+    polar->halfLength = halfLength;
+}
+
 rmviLegend rmviGetLegend(int capacity){
     rmviLegend legend = {0};
     legend.color = malloc(sizeof(Color) * capacity);
@@ -564,6 +657,7 @@ rmviLegend rmviGetLegend(int capacity){
 }
 
 void rmviAddLegend(rmviLegend *legend, Color color, const char *name){
+    // Add an element to the legend
     if (legend->count >= legend->capacity) return; // ici réalloué
     int i = legend->count;
     legend->color[i] = color;
@@ -572,9 +666,10 @@ void rmviAddLegend(rmviLegend *legend, Color color, const char *name){
     legend->count++;
 }
 
-void rmviDrawLegend(rmviCarthesian carthesian, rmviLegend *legend){
-    Vector2 position = Vector2Subtract(carthesian.origin,Vector2Scale(carthesian.size,1));
-    State state = rmviGetState(legend->sizeText,legend->sizeText/20,1.2f,carthesian.size.x,true,0,mathFont,WHITE);
+void rmviDrawLegend(rmviLegend *legend, Vector2 origin, Vector2 halfSizePx){
+    if (legend == NULL) return;
+    Vector2 position = Vector2Subtract(origin, Vector2Scale(halfSizePx, 1));
+    State state = rmviGetState(legend->sizeText,legend->sizeText/20,1.2f,halfSizePx.x,true,0,mathFont,WHITE);
     for(int i =0; i< legend->count; i++){
         DrawCircleV(Vector2Add(position,(Vector2){-legend->sizeText/2,legend->sizeText/2}), legend->sizeText/4,legend->color[i]);
         rmviWriteLatex(legend->name[i],&position,&state);
@@ -602,182 +697,302 @@ char *numberToScientific(float nombre){
     }
     return text;
 }
-// Draw the ticks on the carthesian system, length is the length of the ticks; log coordinate system to add
-void rmviDrawTick(rmviCarthesian carthesian, float length, float thikness, Color color) {
-    int nbMax = floorf(max(carthesian.size.x / carthesian.sizeUnit.x, carthesian.size.y / carthesian.sizeUnit.y));
+
+void rmviDrawTickPolar(const rmviPolar *polar, float length, float thickness, Color color) {
+    if (!polar || polar->gridStepPx <= 0.0f) return;
+
+    int nRadius = (int)floorf(polar->halfLength / polar->gridStepPx);
     State state = rmviGetStateClassic();
-    state.sizeText = min(carthesian.sizeText,carthesian.sizeUnit.x/2);
+    state.sizeText = min(polar->sizeText, polar->gridStepPx/2);
+    state.spacing = state.sizeText/20;
+
+    for (int i = 1; i <= nRadius; i++) {
+        Vector2 tickCenter = { polar->origin.x + i * polar->gridStepPx, polar->origin.y };
+        Vector2 offset = { 0.0f, length/2.0f };
+        DrawLineEx(Vector2Add(tickCenter, offset), Vector2Subtract(tickCenter, offset), thickness, color);
+
+        char *buffer = numberToScientific(i * polar->gridStepUnits);
+        Vector2 labelPos = {
+            tickCenter.x - MeasureText(buffer, state.sizeText)/2.0f,
+            tickCenter.y + state.sizeText/2.0f + length
+        };
+        rmviWriteLatex(buffer, &labelPos, &state);
+    }
+
+    if (polar->nTheta > 0) {
+        float outerRadius = polar->halfLength;
+        for (int i = 0; i < polar->nTheta; i++) {
+            float theta = 2.0f * PI * i / polar->nTheta;
+            Vector2 dir = { cosf(theta), -sinf(theta) };
+            Vector2 outer = Vector2Add(polar->origin, Vector2Scale(dir, outerRadius));
+            Vector2 inner = Vector2Subtract(outer, Vector2Scale(dir, length));
+            DrawLineEx(inner, outer, thickness, color);
+        }
+    }
+}
+
+void rmviDrawGridsPolar(const rmviPolar *polar, Color color){
+    if (!polar || polar->gridStepPx <= 0.0f) return;
+
+    int nRadius = (int)floorf(polar->halfLength / polar->gridStepPx);
+    for (int i = 1; i <= nRadius; i++) {
+        DrawCircleLinesV(polar->origin, i * polar->gridStepPx, color);
+    }
+
+    if (polar->nTheta > 0) {
+        float visibleRange = rmviPolarVisibleRange(polar);
+        for (int i = 0; i < polar->nTheta; i++) {
+            float theta = 2.0f * PI * i / polar->nTheta;
+            Vector2 end = rmviPolarToScreen(polar, (Vector2){visibleRange, theta});
+            DrawLineV(polar->origin, end, color);
+        }
+    }
+}
+inline Vector2 getPositionXonPlot(Vector2 origin, float halfSize, State state) {
+    return Vector2Add(origin, (Vector2) {halfSize*0.8f, state.spaceSize});
+}
+// get the position of the ylabel on the plot, with a space between the plot and the label, and a space between the label and the title
+inline Vector2 getPositionYonPlot(Vector2 origin, float halfSize, State state, float widthY) {
+    return Vector2Add(origin,(Vector2) {-widthY - 1.2 * state.spaceSize, - halfSize*0.8f});
+}
+
+void rmviWriteAxisPolar(const rmviPolar *polar, float sizeText, float spacing, Font font, Color color){
+    State state = rmviGetState(sizeText, spacing, 1.2f, 1.5f*polar->halfLength, true, 0, font, color);
+    Token tokensR[512];
+    int tokenCountR = rmviTokenizeLatex(polar->xlabel, tokensR, 512);
+    RenderBox boxesR[256];
+    int boxCountR = rmviBuildRenderBoxes(tokensR, tokenCountR, boxesR, &state);
+    Vector2 positionR = getPositionXonPlot(polar->origin, polar->halfLength, state);
+    rmviDrawRenderBoxes(boxesR, boxCountR, positionR);
+    Token tokensTheta[512];
+    int tokenCountTheta = rmviTokenizeLatex(polar->ylabel, tokensTheta, 512);
+    RenderBox boxesTheta[256];
+    int boxCountTheta = rmviBuildRenderBoxes(tokensTheta, tokenCountTheta, boxesTheta, &state);
+    Vector2 positionTheta = getPositionYonPlot(polar->origin, polar->halfLength, state, rmviCalcWidthLatex(polar->ylabel, &state));
+    rmviDrawRenderBoxes(boxesTheta, boxCountTheta, positionTheta);
+}
+
+void rmviWriteAxisClassicPolar(const rmviPolar *polar){
+    rmviWriteAxisPolar(polar, polar->sizeText, polar->spacing, mathFont, WHITE);
+}
+
+void rmviWriteTitlePolar(const rmviPolar *polar, float sizeText, float spacing, Font font, Color color){
+    Token tokens[512];
+    int tokenCount = rmviTokenizeLatex(polar->title, tokens, 512);
+    RenderBox boxes[256];
+    State state = rmviGetState(sizeText, spacing, 1.2f, 1.5f*polar->halfLength, true, 0, font, color);
+    int boxCount = rmviBuildRenderBoxes(tokens, tokenCount, boxes, &state);
+    rmviFloatList listWidth;
+    rmviCalcWidthLine(boxes, boxCount, &listWidth);
+    Vector2 position = {
+        polar->origin.x,
+        polar->origin.y - polar->halfLength - sizeText - (listWidth.count-1)*(sizeText*1.2f)
+    };
+    rmviDrawRenderBoxesCentered(&listWidth, sizeText*1.2f*listWidth.count, boxes, boxCount, position);
+    rmviFloatListFree(&listWidth);
+}
+
+void rmviWriteTitleClassicPolar(const rmviPolar *polar){
+    rmviWriteTitlePolar(polar, polar->sizeText, polar->spacing, mathFont, WHITE);
+}
+
+// Draw the ticks on the carthesian system, length is the length of the ticks; log coordinate system to add
+void rmviDrawTick(const rmviCartesian *cartesian, float length, float thickness, Color color) {
+    int nbMax = floorf(max(cartesian->halfSizePx.x / cartesian->gridStepPx.x, cartesian->halfSizePx.y / cartesian->gridStepPx.y));
+    State state = rmviGetStateClassic();
+    state.sizeText = min(cartesian->sizeText,cartesian->gridStepPx.x/2);
     state.spacing = state.sizeText/20;
     for (int i = - nbMax + 1 ; i < nbMax; i ++) {
-        if (abs(i) < floorf(carthesian.size.x / carthesian.sizeUnit.x)) {
-            Vector2 positionThickX = (Vector2) { carthesian.origin.x + i * carthesian.sizeUnit.x, carthesian.origin.y};
+        if (abs(i) < floorf(cartesian->halfSizePx.x / cartesian->gridStepPx.x)) {
+            Vector2 positionThickX = (Vector2) { cartesian->origin.x + i * cartesian->gridStepPx.x, cartesian->origin.y};
             Vector2 lengthY = (Vector2) {0 , length/2};
-            DrawLineEx(Vector2Add(positionThickX, lengthY) , Vector2Subtract(positionThickX, lengthY),thikness,color);
+            DrawLineEx(Vector2Add(positionThickX, lengthY) , Vector2Subtract(positionThickX, lengthY), thickness, color);
             if(i == 1){
-                char *buffer = numberToScientific(carthesian.unit.x);
+                char *buffer = numberToScientific(cartesian->gridStepUnits.x);
                 positionThickX.y += state.sizeText/2.0f;
                 positionThickX.x -= MeasureText(buffer,state.sizeText)/2;
                 rmviWriteLatex(buffer, &positionThickX,&state);
-                //free(buffer);
             }
         }
-        if (abs(i) < floorf(carthesian.size.y / carthesian.sizeUnit.y)){
-            // Draw horizontal lines
-            Vector2 positionThickY = (Vector2) { carthesian.origin.x, carthesian.origin.y + i * carthesian.sizeUnit.y};
+        if (abs(i) < floorf(cartesian->halfSizePx.y / cartesian->gridStepPx.y)){
+            Vector2 positionThickY = (Vector2) { cartesian->origin.x, cartesian->origin.y + i * cartesian->gridStepPx.y};
             Vector2 lengthX = (Vector2) {length/2 , 0};
-            DrawLineEx(Vector2Add(positionThickY, lengthX) , Vector2Subtract(positionThickY, lengthX), thikness,color);
+            DrawLineEx(Vector2Add(positionThickY, lengthX) , Vector2Subtract(positionThickY, lengthX), thickness, color);
             if(i == -1){
-                char *buffer = numberToScientific(carthesian.unit.y);
+                char *buffer = numberToScientific(cartesian->gridStepUnits.y);
                 positionThickY.y -= state.sizeText/2;
                 positionThickY.x -= rmviCalcWidthLatex(buffer, &state) + state.sizeText/5 ;
                 rmviWriteLatex(buffer, &positionThickY,&state);
-                //free(buffer);
             }
         }
     }
 }
 
 // Draw the grids on the carthesian system, should be modified for the thickness
-void rmviDrawGrids(rmviCarthesian carthesian, Color color){
-    int nbMax = floorf(max(carthesian.size.x / carthesian.sizeUnit.x, carthesian.size.y / carthesian.sizeUnit.y));
+void rmviDrawGrids(const rmviCartesian *cartesian, Color color){
+    int nbMax = floorf(max(cartesian->halfSizePx.x / cartesian->gridStepPx.x, cartesian->halfSizePx.y / cartesian->gridStepPx.y));
     for (int i = - nbMax + 1 ; i < nbMax; i ++) {
-        if (abs(i) < floorf(carthesian.size.x / carthesian.sizeUnit.x)) {
-            Vector2 positionThickX = (Vector2) { carthesian.origin.x + i * carthesian.sizeUnit.x, carthesian.origin.y};
-            Vector2 lengthY = (Vector2) {0 , carthesian.size.y};
+        if (abs(i) < floorf(cartesian->halfSizePx.x / cartesian->gridStepPx.x)) {
+            Vector2 positionThickX = (Vector2) { cartesian->origin.x + i * cartesian->gridStepPx.x, cartesian->origin.y};
+            Vector2 lengthY = (Vector2) {0 , cartesian->halfSizePx.y};
             DrawLineV(Vector2Add(positionThickX, lengthY) , Vector2Subtract(positionThickX, lengthY), color);
         }
-        if (abs(i) < floorf(carthesian.size.y / carthesian.sizeUnit.y)){
-            // Draw horizontal lines
-            Vector2 positionThickY = (Vector2) { carthesian.origin.x, carthesian.origin.y + i * carthesian.sizeUnit.y};
-            Vector2 lengthX = (Vector2) {carthesian.size.x , 0};
+        if (abs(i) < floorf(cartesian->halfSizePx.y / cartesian->gridStepPx.y)){
+            Vector2 positionThickY = (Vector2) { cartesian->origin.x, cartesian->origin.y + i * cartesian->gridStepPx.y};
+            Vector2 lengthX = (Vector2) {cartesian->halfSizePx.x , 0};
             DrawLineV(Vector2Add(positionThickY, lengthX) , Vector2Subtract(positionThickY, lengthX), color);
         }
     }
 }
 
 // Draw the carthesian system
-void rmviWriteAxisClassic(rmviCarthesian carthesian){
-    rmviWriteAxis(carthesian,carthesian.sizeText,carthesian.spacing,mathFont,WHITE);
+void rmviWriteAxisClassic(const rmviCartesian *cartesian){
+    rmviWriteAxis(cartesian,cartesian->sizeText,cartesian->spacing,mathFont,WHITE);
 }
-void rmviDrawCarthesianFull(rmviCarthesian carthesian, float arrowSize, float ratio, Color color,bool drawTicks, bool drawGrids) {
+void rmviDrawCartesianFull(const rmviCartesian *cartesian, float arrowSize, float ratio, Color color,bool drawTicks, bool drawGrids) {
     rmviDrawArrow2(
-        (Vector2){ carthesian.origin.x - carthesian.size.x, carthesian.origin.y },
-        (Vector2){ carthesian.origin.x + carthesian.size.x , carthesian.origin.y },
+        (Vector2){ cartesian->origin.x - cartesian->halfSizePx.x, cartesian->origin.y },
+        (Vector2){ cartesian->origin.x + cartesian->halfSizePx.x , cartesian->origin.y },
         arrowSize, ratio, color);
     rmviDrawArrow2(
-        (Vector2){ carthesian.origin.x, carthesian.origin.y + carthesian.size.y },
-        (Vector2){ carthesian.origin.x, carthesian.origin.y - carthesian.size.y },
+        (Vector2){ cartesian->origin.x, cartesian->origin.y + cartesian->halfSizePx.y },
+        (Vector2){ cartesian->origin.x, cartesian->origin.y - cartesian->halfSizePx.y },
         arrowSize, ratio, color);
-    if (drawGrids) rmviDrawGrids(carthesian, color);
-    if (drawTicks) rmviDrawTick(carthesian, arrowSize/2,2.0f, color);
-    if (carthesian.title) rmviWriteTitleClassic(carthesian);
-    rmviWriteAxisClassic(carthesian);
+    if (drawGrids) rmviDrawGrids(cartesian, (Color) { color.r, color.g, color.b, cartesian->alphaGrid * color.a });
+    if (drawTicks) rmviDrawTick(cartesian, arrowSize/2,2.0f, color);
+    if (cartesian->title[0] != '\0') rmviWriteTitleClassic(cartesian);
+    rmviWriteAxisClassic(cartesian);
+    if (cartesian->legendData) rmviDrawLegend(cartesian->legendData, cartesian->origin, cartesian->halfSizePx);
 }
 
-void rmviWriteAxis(rmviCarthesian carthesian,float sizeText, float spacing,Font font,Color color){
-    State state = rmviGetState(sizeText,spacing,1.2f,1.5f*carthesian.size.x,true,0,font,color);
+void rmviDrawPolarFull(const rmviPolar *polar, float arrowSize, float ratio, Color color, bool drawTicks, bool drawGrids) {
+    Vector2 halfSizePx = { polar->halfLength, polar->halfLength };
+    rmviDrawArrow2(
+        (Vector2){ polar->origin.x - polar->halfLength, polar->origin.y },
+        (Vector2){ polar->origin.x + polar->halfLength , polar->origin.y },
+        arrowSize, ratio, color);
+    rmviDrawArrow2(
+        (Vector2){ polar->origin.x, polar->origin.y + polar->halfLength },
+        (Vector2){ polar->origin.x, polar->origin.y - polar->halfLength },
+        arrowSize, ratio, color);
+    if (drawGrids) rmviDrawGridsPolar(polar, (Color) { color.r, color.g, color.b, 0.5f * color.a });
+    if (drawTicks) rmviDrawTickPolar(polar, arrowSize/2, 2.0f, (Color) { color.r, color.g, color.b, polar->alphaGrid * color.a });
+    if (polar->title[0] != '\0') rmviWriteTitleClassicPolar(polar);
+    rmviWriteAxisClassicPolar(polar);
+    if (polar->legendData) rmviDrawLegend(polar->legendData, polar->origin, halfSizePx);
+}
+
+void rmviDrawListPolar(const rmviPolar *polar, const float *listR, const float *listTheta, int count, bool line, Color color){
+    if (!listR || !listTheta || count <= 0) return;
+
+    Vector2 pPrev = {0};
+    bool hasPrev = false;
+    for (int i = 0; i < count; i++) {
+        Vector2 polarPoint = { listR[i], listTheta[i] };
+        if (!rmviPolarPointVisible(polar, polarPoint)) {
+            hasPrev = false;
+            continue;
+        }
+
+        Vector2 p = rmviPolarToScreen(polar, polarPoint);
+        if (line) {
+            if (hasPrev) DrawLineEx(pPrev, p, polar->thickness, color);
+            pPrev = p;
+            hasPrev = true;
+        }
+        else {
+            DrawPixelV(p, color);
+        }
+    }
+}
+
+
+void rmviWriteAxis(const rmviCartesian *cartesian,float sizeText, float spacing,Font font,Color color){
+    State state = rmviGetState(sizeText,spacing,1.2f,1.5f*cartesian->halfSizePx.x,true,0,font,color);
     Token tokensX[512];
-    int tokenCountX = rmviTokenizeLatex(carthesian.xlabel,tokensX, 512);
+    int tokenCountX = rmviTokenizeLatex(cartesian->xlabel,tokensX, 512);
     RenderBox boxesX[256];
     int boxCountX = rmviBuildRenderBoxes(tokensX, tokenCountX, boxesX, &state);
-    Vector2 positionX = Vector2Add(carthesian.origin,
-        (Vector2) {carthesian.size.x*0.8, sizeText});
+    Vector2 positionX = getPositionXonPlot(cartesian->origin, cartesian->halfSizePx.x, state);
     rmviDrawRenderBoxes(boxesX,boxCountX,positionX);
     Token tokensY[512];
-    int tokenCountY = rmviTokenizeLatex(carthesian.ylabel,tokensY, 512);
+    int tokenCountY = rmviTokenizeLatex(cartesian->ylabel,tokensY, 512);
     RenderBox boxesY[256];
     int boxCountY = rmviBuildRenderBoxes(tokensY, tokenCountY, boxesY, &state);
-    Vector2 positionY = Vector2Add(carthesian.origin,
-        (Vector2) {-1.2*rmviCalcWidthLatex(carthesian.ylabel,&state), - carthesian.size.y*0.8});
+    Vector2 positionY = getPositionYonPlot(cartesian->origin, cartesian->halfSizePx.y, state, rmviCalcWidthLatex(cartesian->ylabel, &state));
     rmviDrawRenderBoxes(boxesY,boxCountY,positionY);
 }
-void rmviWriteTitle(rmviCarthesian carthesian,float sizeText, float spacing,Font font,Color color){
+void rmviWriteTitle(const rmviCartesian *cartesian,float sizeText, float spacing,Font font,Color color){
     Token tokens[512];
-    int tokenCount = rmviTokenizeLatex(carthesian.title,tokens, 512);
+    int tokenCount = rmviTokenizeLatex(cartesian->title,tokens, 512);
     RenderBox boxes[256];
-    State state = rmviGetState(sizeText,spacing,1.2f,1.5f*carthesian.size.x,true,0,font,color);
+    State state = rmviGetState(sizeText,spacing,1.2f,1.5f*cartesian->halfSizePx.x,true,0,font,color);
     int boxCount = rmviBuildRenderBoxes(tokens, tokenCount, boxes, &state);
     rmviFloatList listWidth;
     rmviCalcWidthLine(boxes,boxCount,&listWidth);
-    Vector2 position = Vector2Add(carthesian.origin, (Vector2) {0,- carthesian.size.y - sizeText - (listWidth.count-1)*(sizeText*1.2)});
+    Vector2 position = Vector2Add(cartesian->origin, (Vector2) {0,- cartesian->halfSizePx.y - sizeText - (listWidth.count-1)*(sizeText*1.2f)});
     rmviDrawRenderBoxesCentered(&listWidth,sizeText*1.2* listWidth.count,boxes, boxCount, position);
     rmviFloatListFree(&listWidth);
 }
-void rmviWriteTitleClassic(rmviCarthesian carthesian){
-    rmviWriteTitle(carthesian,carthesian.sizeText,carthesian.spacing,mathFont,WHITE);
+void rmviWriteTitleClassic(const rmviCartesian *cartesian){
+    rmviWriteTitle(cartesian,cartesian->sizeText,cartesian->spacing,mathFont,WHITE);
 }
 
 // Update the carthesian system
-void rmviUpdateCarthesian(rmviCarthesian *carthesian, Vector2 origin, Vector2 unit , Vector2 size) {
-    carthesian->origin = origin;
-    carthesian->unit = unit;
-    carthesian->size = size;
+void rmviUpdateCartesian(rmviCartesian *cartesian, Vector2 origin, Vector2 gridStepUnits , Vector2 halfSizePx) {
+    cartesian->origin = origin;
+    cartesian->gridStepUnits = gridStepUnits;
+    cartesian->halfSizePx = halfSizePx;
 }
 
 // Draw a function on the carthesian system
-void rmviDrawFunction(rmviCarthesian carthesian, MathFunction fct, Color color) {
-    int nbPoints = NBPOINTS; // smoothness
-    float xRange = carthesian.size.x / carthesian.unit.x; // half width in units
-    float step = (xRange * 2) / nbPoints; // step in units
+void rmviDrawFunction(const rmviCartesian *cartesian, MathFunction fct, Color color) {
+    int nbPoints = NBPOINTS;
+    float xRange = rmviCartesianVisibleRange(cartesian).x;
+    float step = (xRange * 2.0f) / nbPoints;
 
-    float x1, x2, y1, y2;
-    Vector2 p1, p2;
+    float x2 = 0.0f;
+    float y2 = 0.0f;
+    Vector2 p2 = {0};
     for (int i = 0; i < nbPoints; i++) {
         if (i != 0) {
-            x1 = x2;
-            p1 = p2;
-            y1 = fct(x1);
+            Vector2 p1 = p2;
             x2 = -xRange + i * step;
             y2 = fct(x2);
-            p2 = (Vector2){
-                carthesian.origin.x + x2 * carthesian.unit.x,
-                carthesian.origin.y - y2 * carthesian.unit.y
-            };
-            if (fabsf(y2) <= carthesian.size.y / carthesian.unit.y) DrawLineV(p1, p2, color);
+            p2 = rmviCartesianToScreen(cartesian, (Vector2){x2, y2});
+            if (rmviCartesianPointVisible(cartesian, (Vector2){x2, y2})) {
+                DrawLineV(p1, p2, color);
+            }
         }
         else {
             x2 = -xRange + i * step;
             y2 = fct(x2);
-            p2 = (Vector2){
-                carthesian.origin.x + x2 * carthesian.unit.x,
-                carthesian.origin.y - y2 * carthesian.unit.y
-            };
+            p2 = rmviCartesianToScreen(cartesian, (Vector2){x2, y2});
         }
     }
 }
 // listX/listY : valeurs en "unités" (pas en pixels)
 // count       : nb de points valides
 // line        : si true => relie les points, sinon dessine juste des points
-void rmviDrawList2(rmviCarthesian carthesian, const float *listX, const float *listY, int count, bool line, Color color){
+void rmviDrawList2(const rmviCartesian *cartesian, const float *listX, const float *listY, int count, bool line, Color color){
     if (!listX || !listY || count <= 0) return;
-    // bornes visibles en unités (comme dans ton code)
-    float xRange = carthesian.size.x*carthesian.unit.x / carthesian.sizeUnit.x; // demi-largeur en unités
-    float yRange = carthesian.size.y*carthesian.unit.y / carthesian.sizeUnit.y; // demi-hauteur en unités
     Vector2 pPrev = {0};
     bool hasPrev = false;
     for (int i = 0; i < count; i++){
         float x = listX[i];
         float y = listY[i];
-        // Optionnel : skip si hors champ (tu peux aussi choisir de "clipper")
-        if (fabsf(x) > xRange || fabsf(y) > yRange) {
+        if (!rmviCartesianPointVisible(cartesian, (Vector2){x, y})) {
             hasPrev = false; // casse la ligne si on sort du cadre
             continue;
         }
-
-        Vector2 p = (Vector2){
-            carthesian.origin.x + x* carthesian.sizeUnit.x/ carthesian.unit.x,
-            carthesian.origin.y - y* carthesian.sizeUnit.x/ carthesian.unit.y
-        };
+        Vector2 p = rmviCartesianToScreen(cartesian, (Vector2){x, y});
         if (line){
-            if (hasPrev) DrawLineEx(pPrev, p, carthesian.thikness, color);
+            if (hasPrev) DrawLineEx(pPrev, p, cartesian->thickness, color);
             pPrev = p;
             hasPrev = true;
         }
         else{
-            // Points "visibles" : DrawPixelV si tu veux 1px,
-            // ou DrawCircleV pour un point plus lisible
             DrawPixelV(p, color);
-            // DrawCircleV(p, 2.0f, color);
         }
     }
 }
@@ -798,7 +1013,7 @@ float circleY(float t, float radius) {
 }
 
 // Draw a parametric curve defined by two functions which takes 2 args
-void rmviDraw2Parametric(rmviCarthesian carthesian,float fx(float,float),float fy(float,float),float radius, float tMin, float tMax, int n, Color color) {
+void rmviDraw2Parametric(const rmviCartesian *cartesian, float fx(float,float), float fy(float,float), float radius, float tMin, float tMax, int n, Color color) {
     float dt = (tMax - tMin) / n;
     for (int i = 0; i < n; i++) {
         float t1 = tMin + i * dt;
@@ -807,8 +1022,8 @@ void rmviDraw2Parametric(rmviCarthesian carthesian,float fx(float,float),float f
         float y1 = fy(t1, radius);
         float x2 = fx(t2, radius);
         float y2 = fy(t2, radius);
-        Vector2 p1 = { carthesian.origin.x + x1 * carthesian.unit.x, carthesian.origin.y - y1 * carthesian.unit.y };
-        Vector2 p2 = { carthesian.origin.x + x2 * carthesian.unit.x, carthesian.origin.y - y2 * carthesian.unit.y };
+        Vector2 p1 = rmviCartesianToScreen(cartesian, (Vector2){x1, y1});
+        Vector2 p2 = rmviCartesianToScreen(cartesian, (Vector2){x2, y2});
         DrawLineV(p1, p2, color);
     }
 }
@@ -817,14 +1032,14 @@ void rmviDraw2Parametric(rmviCarthesian carthesian,float fx(float,float),float f
 
 // ----------------- Fonctions pour vidéos, à mettre dans un fichier séparé -----------------
 // Draw a point a trigonometric circle and its projections on the axes 
-void rmviDrawTrigo(rmviCarthesian carthesian, float x, float y, Color color, float radius) {
+void rmviDrawTrigo(const rmviCartesian *cartesian, float x, float y, Color color, float radius) {
     float size = 7.0f;
-    Vector2 point = { carthesian.origin.x + x * carthesian.unit.x, carthesian.origin.y - y * carthesian.unit.y };
-    DrawLineEx(carthesian.origin, point, size ,color);
-    DrawLineEx(carthesian.origin, (Vector2){ point.x, carthesian.origin.y },size, GREEN);
-    DrawLineEx(carthesian.origin, (Vector2){ carthesian.origin.x, point.y }, size, RED);
-    DrawLineEx(point, (Vector2){ point.x, carthesian.origin.y }, size, color);
-    DrawLineEx(point, (Vector2){ carthesian.origin.x, point.y }, size, color);
+    Vector2 point = rmviCartesianToScreen(cartesian, (Vector2){x, y});
+    DrawLineEx(cartesian->origin, point, size ,color);
+    DrawLineEx(cartesian->origin, (Vector2){ point.x, cartesian->origin.y },size, GREEN);
+    DrawLineEx(cartesian->origin, (Vector2){ cartesian->origin.x, point.y }, size, RED);
+    DrawLineEx(point, (Vector2){ point.x, cartesian->origin.y }, size, color);
+    DrawLineEx(point, (Vector2){ cartesian->origin.x, point.y }, size, color);
     DrawCircleV(point, radius, color);
 }
 

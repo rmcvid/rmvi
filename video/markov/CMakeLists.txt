@@ -13,6 +13,10 @@ target_compile_definitions(markov
   PRIVATE
     FONT_PATH=\"${CMAKE_SOURCE_DIR}/extern/police/latinmodern-math-1959/otf/latinmodern-math.otf\"
 )
+
+set(OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/output/")
+add_compile_definitions(OUTPUT_DIR="${OUTPUT_DIR}")
+
 # link vers la librairie commune (et transitivement vers raylib si myvisual le déclare PUBLIC)
 target_link_libraries(markov
   PRIVATE

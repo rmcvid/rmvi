@@ -561,6 +561,7 @@ rmviCartesian rmviGetCartesian(Vector2 origin, Vector2 halfSizePx, Vector2 gridS
     cartesian.thickness = 3;
     cartesian.sizeText = 40;
     cartesian.spacing = 2;
+    cartesian.alphaGrid = 0.5f;
     return cartesian;
 }
 
@@ -829,17 +830,17 @@ void rmviDrawTick(const rmviCartesian *cartesian, float length, float thickness,
 }
 
 // Draw the grids on the carthesian system, should be modified for the thickness
-void rmviDrawGrids(const rmviCartesian *cartesian, Color color){
-    int nbMax = floorf(max(cartesian->halfSizePx.x / cartesian->gridStepPx.x, cartesian->halfSizePx.y / cartesian->gridStepPx.y));
-    for (int i = - nbMax + 1 ; i < nbMax; i ++) {
-        if (abs(i) < floorf(cartesian->halfSizePx.x / cartesian->gridStepPx.x)) {
-            Vector2 positionThickX = (Vector2) { cartesian->origin.x + i * cartesian->gridStepPx.x, cartesian->origin.y};
-            Vector2 lengthY = (Vector2) {0 , cartesian->halfSizePx.y};
+void rmviDrawGrids(Vector2 origin, Vector2 halfSizePx, Vector2 gridStepPx, Color color){
+    int nbMax = floorf(max(halfSizePx.x / gridStepPx.x, halfSizePx.y / gridStepPx.y));
+    for (int i = - nbMax ; i <= nbMax; i ++) {
+        if (abs(i) <= floorf(halfSizePx.x / gridStepPx.x)) {
+            Vector2 positionThickX = (Vector2) { origin.x + i * gridStepPx.x, origin.y};
+            Vector2 lengthY = (Vector2) {0 , halfSizePx.y};
             DrawLineV(Vector2Add(positionThickX, lengthY) , Vector2Subtract(positionThickX, lengthY), color);
         }
-        if (abs(i) < floorf(cartesian->halfSizePx.y / cartesian->gridStepPx.y)){
-            Vector2 positionThickY = (Vector2) { cartesian->origin.x, cartesian->origin.y + i * cartesian->gridStepPx.y};
-            Vector2 lengthX = (Vector2) {cartesian->halfSizePx.x , 0};
+        if (abs(i) <= floorf(halfSizePx.y / gridStepPx.y)){
+            Vector2 positionThickY = (Vector2) { origin.x, origin.y + i * gridStepPx.y};
+            Vector2 lengthX = (Vector2) {halfSizePx.x , 0};
             DrawLineV(Vector2Add(positionThickY, lengthX) , Vector2Subtract(positionThickY, lengthX), color);
         }
     }
@@ -858,10 +859,10 @@ void rmviDrawCartesianFull(const rmviCartesian *cartesian, float arrowSize, floa
         (Vector2){ cartesian->origin.x, cartesian->origin.y + cartesian->halfSizePx.y },
         (Vector2){ cartesian->origin.x, cartesian->origin.y - cartesian->halfSizePx.y },
         arrowSize, ratio, color);
-    if (drawGrids) rmviDrawGrids(cartesian, (Color) { color.r, color.g, color.b, cartesian->alphaGrid * color.a });
+    if (drawGrids) rmviDrawGrids(cartesian->origin, cartesian->halfSizePx, cartesian->gridStepPx, (Color) { color.r, color.g, color.b, cartesian->alphaGrid * color.a });
     if (drawTicks) rmviDrawTick(cartesian, arrowSize/2,2.0f, color);
     if (cartesian->title[0] != '\0') rmviWriteTitleClassic(cartesian);
-    rmviWriteAxisClassic(cartesian);
+    if(cartesian->xlabel[0] != '\0' && cartesian->ylabel[0] != '\0') rmviWriteAxisClassic(cartesian);
     if (cartesian->legendData) rmviDrawLegend(cartesian->legendData, cartesian->origin, cartesian->halfSizePx);
 }
 
@@ -875,10 +876,10 @@ void rmviDrawPolarFull(const rmviPolar *polar, float arrowSize, float ratio, Col
         (Vector2){ polar->origin.x, polar->origin.y + polar->halfLength },
         (Vector2){ polar->origin.x, polar->origin.y - polar->halfLength },
         arrowSize, ratio, color);
-    if (drawGrids) rmviDrawGridsPolar(polar, (Color) { color.r, color.g, color.b, 0.5f * color.a });
+    if (drawGrids) rmviDrawGridsPolar(polar, (Color) { color.r, color.g, color.b, polar->alphaGrid * color.a });
     if (drawTicks) rmviDrawTickPolar(polar, arrowSize/2, 2.0f, (Color) { color.r, color.g, color.b, polar->alphaGrid * color.a });
     if (polar->title[0] != '\0') rmviWriteTitleClassicPolar(polar);
-    rmviWriteAxisClassicPolar(polar);
+    if(polar->xlabel[0] != '\0' && polar->ylabel[0] != '\0')  rmviWriteAxisClassicPolar(polar);
     if (polar->legendData) rmviDrawLegend(polar->legendData, polar->origin, halfSizePx);
 }
 

@@ -106,7 +106,7 @@ typedef struct {
     float interline;
     float widthMax;
     bool addSpace;
-    int miseEnPage;
+    int miseEnPage;   // a delete
     Font font;
 } State;
 

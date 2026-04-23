@@ -58,7 +58,7 @@ typedef struct {
     char ylabel[32];
     char title[512];
     float thickness;
-    float sizeText;
+    float sizeText;                     // ç suprimer 
     float spacing;
     float alphaGrid;                    // alpha value for grid lines
     rmviLegend *legendData;
@@ -301,7 +301,7 @@ void rmviDrawCartesianFull(const rmviCartesian *cartesian, float arrowSize, floa
 void rmviUpdateCartesian(rmviCartesian *cartesian, Vector2 origin, Vector2 gridStepUnits, Vector2 halfSizePx);
 void rmviWriteAxis(const rmviCartesian *cartesian, float sizeText, float spacing, Font font, Color color);
 void rmviDrawTick(const rmviCartesian *cartesian, float length, float thickness, Color color);
-void rmviDrawGrids(const rmviCartesian *cartesian, Color color);
+void rmviDrawGrids(Vector2 origin, Vector2 halfSizePx, Vector2 gridStepPx, Color color);
 void rmviDrawFunction(const rmviCartesian *cartesian, MathFunction fct, Color color);
 void rmviDraw2Parametric(const rmviCartesian *cartesian, float fx(float,float), float fy(float,float), float radius, float tMin, float tMax, int n, Color color);
 void rmviDrawTrigo(const rmviCartesian *cartesian, float x, float y, Color color, float radius);

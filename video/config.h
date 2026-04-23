@@ -24,7 +24,7 @@ void *ffmpeg = NULL;
 #define UNITRATIO 2
 #define SPACETREERATIOX 3.0f // Espace entre les noeuds sur l'axe X
 #define SPACETREERATIOY 1.5f // Espace entre les noeuds sur l'axe Y
-#define BG BLACK
+#define BG WHITE
 #define SIZETEXT 50.0f      // taille du text standar
 #define ARROWSIZE 20.0f     // gives the size arrow divided by ratio i think
 #define SPLIT_LEFT_ARROWS 0.2f // gives the left split for arrowsRect

@@ -1,0 +1,9 @@
+# build trace for test
+audio_path C:/Users/ryanm/Documents/Rmvi/animation/video/jean/output/test.wav
+video_path C:/Users/ryanm/Documents/Rmvi/animation/video/jean/output/test.mp4
+# frame_index_zero_based time_seconds
+fps 50
+mic_start frame=207 time=4.566017
+mic_stop frame=514 time=10.727593 duration=6.161576 start_frame=207 start_time=4.566017
+mic_start frame=704 time=14.535763
+mic_stop frame=1691 time=34.325224 duration=19.789462 start_frame=704 start_time=14.535763
